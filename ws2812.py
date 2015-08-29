@@ -32,7 +32,7 @@ class WS2812:
         self.led_count = led_count
         self.intensity = intensity
 
-        # prepare SPI data buffer (4 bytes for each color)
+        # prepare SPI data buffer. One long (=4 bytes) for each color.
         z = self.buf_bytes[0]
         self.a = array('L', (z for i in range(3*led_count + 1))) # extra word of zero
         self.buf = bytearray_at(addressof(self.a), 3*4*led_count + 1) # extra byte
@@ -40,6 +40,7 @@ class WS2812:
 
         self.buf[-1] = 0        # make it \x00 to idle SPI low after transfer
 
+        # Make a translation table from LED value to SPI bit pattern
         self.bits = array('L', range(256))
         bb = bytearray_at(addressof(self.bits), 4*256)
         mask = 0x03
@@ -70,6 +71,10 @@ class WS2812:
         self.spi.send(bytes(8))
 
     def update_buf(self, data, start=0):
+        return self._update_buf(data, start)
+
+    @micropython.viper
+    def _update_buf(self, data, start:int) -> int:
         # Fill a part of the buffer with RGB data.
         #
         # Order of colors in buffer is changed from RGB to GRB because WS2812 LED
@@ -77,9 +82,6 @@ class WS2812:
         # (1 byte for each 2 bits).
         #
         # Returns the index of the first unfilled LED
-        #
-        # Note: If you find this function ugly, it's because speed optimisations
-        # beat purity of code.
 
         a = self.a
         bits = self.bits
@@ -96,8 +98,10 @@ class WS2812:
             a[index+2] = bits[blue]
 
             index += 3
+            start += 1
 
-        return index // 3
+        return start
+
 
     def fill_buf(self, data):
         # Fill buffer with RGB data.
@@ -106,9 +110,9 @@ class WS2812:
         end = self.update_buf(data)
 
         # turn off the rest of the LEDs
-        buf = self.buf
-        off = self.buf_bytes[0]
-        for index in range(end * 12, self.led_count * 12):
-            buf[index] = off
+        a = self.a
+        off = self.bits[0]
+        for index in range(end * 3, self.led_count * 3):
+            a[index] = off
             index += 1
         # leave last buffer byte value 0
