@@ -68,7 +68,6 @@ class WS2812:
     def send_buf(self):
         #Send buffer over SPI.
         self.spi.send(self.buf)
-        self.spi.send(bytes(8))
 
     def update_buf(self, data, start=0):
         return self._update_buf(data, start)
