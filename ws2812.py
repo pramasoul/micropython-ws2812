@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import pyb
+from array import array
+from uctypes import addressof, bytearray_at
 
 
 class WS2812:
@@ -31,13 +33,40 @@ class WS2812:
         self.intensity = intensity
 
         # prepare SPI data buffer (4 bytes for each color)
-        self.buf = bytearray(led_count*3*4 + 1) # An extra byte of zero to idle the data line low
+        z = self.buf_bytes[0]
+        self.a = array('L', (z for i in range(3*led_count + 1))) # extra word of zero
+        self.buf = bytearray_at(addressof(self.a), 3*4*led_count + 1) # extra byte
+        #self.buf = bytearray(z for i in range(3*4*led_count + 1))
+
+        self.buf[-1] = 0        # make it \x00 to idle SPI low after transfer
+
+        self.bits = array('L', range(256))
+        bb = bytearray_at(addressof(self.bits), 4*256)
+        mask = 0x03
+        buf_bytes = self.buf_bytes
+        for i in range(256):
+            index = 4*i
+            bb[index] = buf_bytes[i >> 6 & 0x03]
+            bb[index+1] = buf_bytes[i >> 4 & 0x03]
+            bb[index+2] = buf_bytes[i >> 2 & 0x03]
+            bb[index+3] = buf_bytes[i & 0x03]
 
         # SPI init
         self.spi = pyb.SPI(spi_bus, pyb.SPI.MASTER, baudrate=3200000, polarity=0, phase=1)
 
         # turn LEDs off
         self.show([])
+
+    @staticmethod
+    @micropython.asm_thumb
+    def a_get(r0, r1):
+        add(r1, r1, r1)
+        add(r1, r1, r1)
+        add(r1, r0, r1)
+        ldr(r0, [r1,0])
+
+    def get(self, index):
+        return self.a_get(self.buf, index)
 
     def show(self, data):
         # Show RGB data on LEDs. Expected data = [(R, G, B), ...] where R, G and B
@@ -63,35 +92,23 @@ class WS2812:
         # Note: If you find this function ugly, it's because speed optimisations
         # beat purity of code.
 
-        buf = self.buf
-        buf_bytes = self.buf_bytes
+        a = self.a
+        bits = self.bits
         intensity = self.intensity
+        index = start * 3
 
-        mask = 0x03
-        index = start * 12
         for red, green, blue in tuple(data):
-            red = round(red * intensity)
-            green = round(green * intensity)
-            blue = round(blue * intensity)
+            red = min(round(red * intensity), 0xff)
+            green = min(round(green * intensity), 0xff)
+            blue = min(round(blue * intensity), 0xff)
 
-            buf[index] = buf_bytes[green >> 6 & mask]
-            buf[index+1] = buf_bytes[green >> 4 & mask]
-            buf[index+2] = buf_bytes[green >> 2 & mask]
-            buf[index+3] = buf_bytes[green & mask]
+            a[index] = bits[green]
+            a[index+1] = bits[red]
+            a[index+2] = bits[blue]
 
-            buf[index+4] = buf_bytes[red >> 6 & mask]
-            buf[index+5] = buf_bytes[red >> 4 & mask]
-            buf[index+6] = buf_bytes[red >> 2 & mask]
-            buf[index+7] = buf_bytes[red & mask]
+            index += 3
 
-            buf[index+8] = buf_bytes[blue >> 6 & mask]
-            buf[index+9] = buf_bytes[blue >> 4 & mask]
-            buf[index+10] = buf_bytes[blue >> 2 & mask]
-            buf[index+11] = buf_bytes[blue & mask]
-
-            index += 12
-
-        return index // 12
+        return index // 3
 
     def fill_buf(self, data):
         # Fill buffer with RGB data.
