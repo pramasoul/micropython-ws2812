@@ -56,7 +56,12 @@ class WS2812:
         # turn LEDs off
         self.show([])
 
+    def __len__(self):
+        return self.led_count
+
     def get_led(self, index):
+        if index >= self.led_count or index < 0:
+            raise IndexError("tried to get item", index)
         a_get = self.a_get
         ix = index * 3
         rv = bytearray(3)
@@ -64,6 +69,8 @@ class WS2812:
         rv[1] = a_get(self.buf, ix+0)
         rv[2] = a_get(self.buf, ix+2)
         return rv
+
+    __getitem__ = get_led
 
     @staticmethod
     @micropython.asm_thumb
@@ -108,7 +115,11 @@ class WS2812:
     def set_led(self, index, value):
         # set LED buffer at index to value
         # value is bytearray((r,g,b))
+        if index >= self.led_count or index < 0:
+            raise IndexError
         return self.a_set(self.buf, index, value)
+
+    __setitem__ = set_led
 
     @staticmethod
     @micropython.asm_thumb
