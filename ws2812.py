@@ -6,10 +6,10 @@ from uctypes import addressof, bytearray_at
 
 
 class WS2812:
-    #Driver for WS2812 RGB LEDs. May be used for controlling single LED or chain
-    #of LEDs.
+    # Driver for WS2812 RGB LEDs. May be used for controlling single LED or chain
+    # of LEDs.
     #
-    #Example of use:
+    # Example of use:
     #
     #    chain = WS2812(spi_bus=1, led_count=4)
     #    data = [
@@ -20,7 +20,7 @@ class WS2812:
     #    ]
     #    chain.show(data)
     #
-    #Version: 1.0
+    # Version: 1.4
 
     buf_bytes = (0x11, 0x13, 0x31, 0x33)
 
@@ -33,12 +33,15 @@ class WS2812:
         self.intensity = intensity
 
         # prepare SPI data buffer (4 bytes for each color for each pixel)
-        self.a = array('L', range(3*led_count + 1)) # extra word of zero
-        self.buf = bytearray_at(addressof(self.a), 3*4*led_count + 1) # extra byte
-        #self.buf = bytearray(z for i in range(3*4*led_count + 1))
 
+        # Accessable as word-per-color via the self.a array of 32-bit longs:
+        self.a = array('L', range(3*led_count + 1)) # extra word of zero
+
+        # The byte array buffer that gets sent out the SPI is the one underlying self.a:
+        self.buf = bytearray_at(addressof(self.a), 3*4*led_count + 1) # extra byte
         self.buf[-1] = 0        # make it \x00 to idle SPI low after transfer
 
+        # OBSOLETE
         self.bits = array('L', range(256))
         bb = bytearray_at(addressof(self.bits), 4*256)
         mask = 0x03
@@ -60,14 +63,15 @@ class WS2812:
         return self.led_count
 
     def get_led(self, index, rgb=None):
+        # The asm function is unguarded as to index, so enforce here:
         if index >= self.led_count or index < 0:
             raise IndexError("tried to get item", index)
         a_get = self.a_get
         ix = index * 3
         rv = rgb or bytearray(3)
-        rv[0] = a_get(self.buf, ix+1)
-        rv[1] = a_get(self.buf, ix+0)
-        rv[2] = a_get(self.buf, ix+2)
+        rv[0] = a_get(self.buf, ix+1) # ws2812 part is green first
+        rv[1] = a_get(self.buf, ix+0) # then red
+        rv[2] = a_get(self.buf, ix+2) # then blue
         return rv
 
     __getitem__ = get_led
@@ -87,6 +91,10 @@ class WS2812:
         add(r7, r1, r1)     # * 2
         add(r7, r7, r7)     # * 4
         add(r6, r0, r7)     # base + 4 * index
+
+        # Notation: numeral indicates bit position in decoded result
+        # That bit may be True or False. Our job is to herd them to r0
+        # "-" is a clear bit (aka False or 0), "+" is a set bit (aka True or 1)
         ldr(r3, [r6, 0])    # r3 is --1+--0+--3+--2+--5+--4+--7+--6+
         mov(r0, r3)         # r0 is --1+--0+--3+--2+--5+--4+--7+--6+
         mov(r4, 1)          # r4 is 1
@@ -115,6 +123,7 @@ class WS2812:
     def set_led(self, index, value):
         # set LED buffer at index to value
         # value is bytearray((r,g,b))
+        # The asm function is unguarded as to index, so enforce here
         if index >= self.led_count or index < 0:
             raise IndexError
         return self.a_set(self.buf, index, value)
@@ -222,12 +231,9 @@ class WS2812:
         #
         # Order of colors in buffer is changed from RGB to GRB because WS2812 LED
         # has GRB order of colors. Each color is represented by 4 bytes in buffer
-        # (1 byte for each 2 bits).
+        # (1 byte for each 2 bits), corresponding to one 32-bit word in self.a
         #
         # Returns the index of the first unfilled LED
-        #
-        # Note: If you find this function ugly, it's because speed optimisations
-        # beat purity of code.
 
         a = self.a
         bits = self.bits
