@@ -59,12 +59,12 @@ class WS2812:
     def __len__(self):
         return self.led_count
 
-    def get_led(self, index):
+    def get_led(self, index, rgb=None):
         if index >= self.led_count or index < 0:
             raise IndexError("tried to get item", index)
         a_get = self.a_get
         ix = index * 3
-        rv = bytearray(3)
+        rv = rgb or bytearray(3)
         rv[0] = a_get(self.buf, ix+1)
         rv[1] = a_get(self.buf, ix+0)
         rv[2] = a_get(self.buf, ix+2)
@@ -135,14 +135,14 @@ class WS2812:
         # r6: 3
         # r7: temporary
 
-        mov(r5, pc)
-        b(START)
-        data(1, 0x11, 0x13, 0x31, 0x33)
-        align(2)
+        mov(r5, pc)        # know the base of the data table
+        b(START)           # get to entry point
+        data(1, 0x11, 0x13, 0x31, 0x33) # encoded bytes corresponding to 2-bit values
+        align(2)           # ritual requirement
 
-        label(ENCODE)
-        # r1 is value in 0-255
-        # return value in r0
+        label(ENCODE)      # The encode(r1) entry point
+        # r1 is value in 0-255 to encode
+        # returns encoded word in r0
         mov(r7, r1)        # r7 is value
         and_(r7, r6)       # r7 is bottom two bits of value
         add(r7, r7, r5)    # r7 is address of encoded data byte
@@ -179,11 +179,14 @@ class WS2812:
         orr(r0, r7)        # r0 all done
         bx(lr)
 
-        label(START)
+        label(START)        # entry point
+
+        # Find the starting address of where we store result
         mov(r3, 12)         # 12 bytes per pixel
         mul(r3, r1)         # r3 is address offset from base
         add(r3, r3, r0)     # r3 is address of first (i.e. green) encoded 32-bit word
 
+        # set up useful constants
         mov(r4, 2)
         mov(r6, 3)
 
@@ -199,8 +202,6 @@ class WS2812:
         bl(ENCODE)
         str(r0, [r3,8])     # store encoded blue
 
-        #b(RETURN)
-        #label(RETURN)
 
 
     def show(self, data):
@@ -213,6 +214,8 @@ class WS2812:
     def send_buf(self):
         #Send buffer over SPI.
         self.spi.send(self.buf)
+
+    sync = send_buf             # better name
 
     def was_update_buf(self, data, start=0):
         # Fill a part of the buffer with RGB data.
@@ -246,16 +249,10 @@ class WS2812:
 
     def update_buf(self, data, where=0):
         # Fill a part of the buffer with RGB data.
-        #
-        # Order of colors in buffer is changed from RGB to GRB because WS2812 LED
-        # has GRB order of colors. Each color is represented by 4 bytes in buffer
-        # (1 byte for each 2 bits).
-        #
         # Returns the index of the first unfilled LED
-        #
-        # Note: If you find this function ugly, it's because speed optimisations
-        # beat purity of code.
-
+        # data is an iterable that returns an iterable
+        # e.g. [(1,2,3), (4,5,6)]
+        # or some generator of tuples or generators
         set_led = self.set_led
         b = bytearray(3)
         for b[0], b[1], b[2] in tuple(data):
@@ -265,14 +262,10 @@ class WS2812:
 
     def fill_buf(self, data):
         # Fill buffer with RGB data.
-        #
         # All LEDs after the data are turned off.
         end = self.update_buf(data)
 
         # turn off the rest of the LEDs
-        buf = self.buf
-        off = self.buf_bytes[0]
-        for index in range(end * 12, self.led_count * 12):
-            buf[index] = off
-            index += 1
-        # leave last buffer byte value 0
+        a = self.a
+        for i in range(end * 3, self.led_count * 3):
+            a[i] = 0x11111111   # off
