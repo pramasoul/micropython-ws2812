@@ -5,61 +5,20 @@ from array import array
 from uctypes import addressof, bytearray_at
 
 
-class Pixel:
-    def __init__(self, a, i):
-        self.a = a
-        self.i = i
-
-    @property
-    def r(self):
-        return _get(self.a, self.i+1)
-
-    @r.setter
-    def r(self, v):
-        _set(self.a, self.i+1, v)
-
-    @property
-    def g(self):
-        return _get(self.a, self.i)
-
-    @g.setter
-    def g(self, v):
-        _set(self.a, self.i, v)
-
-    @property
-    def b(self):
-        return _get(self.a, self.i+2)
-
-    @b.setter
-    def b(self, v):
-        _set(self.a, self.i+2, v)
-
-    def __getitem__(self, i):
-        if i >= 3 or i < 0:
-            raise IndexError("only 3 colors")
-        return _get(self.a, self.i + (1,0,2)[i])
-
-    def __setitem__(self, i, v):
-        if i >= 3 or i < 0:
-            raise IndexError("only 3 colors")
-        return _set(self.a, self.i + (1,0,2)[i], v)
-
-    def off(self):
-        self.r = self.b = self.g = 0
-
-    def __len__(self):
-        return 3
-
-    def __repr__(self):
-        return "<Pixel %d (%d, %d, %d) of chain 0x%x>" % \
-            (self.i//3, self.r, self.g, self.b, addressof(self.a))
-
-
 class WS2812:
     # Driver for WS2812 RGB LEDs. May be used for controlling single LED or chain
     # of LEDs.
     #
-    # Example of use:
+    # Examples of use:
+    #
+    #    chain = WS2812(spi_bus=1, led_count=4)
+    #    i = 0
+    #    for pixel in chain:
+    #        pixel.r = i
+    #        pixel.g = i + 1
+    #        pixel.b = i + 2
+    #        i += 3
+    #    chain.sync()
     #
     #    chain = WS2812(spi_bus=1, led_count=4)
     #    data = [
@@ -70,7 +29,7 @@ class WS2812:
     #    ]
     #    chain.show(data)
     #
-    # Version: 1.4
+    # Version: 1.5
 
     buf_bytes = (0x11, 0x13, 0x31, 0x33)
 
@@ -81,6 +40,7 @@ class WS2812:
         # intensity = light intensity (float up to 1)
         self.led_count = led_count
         self.intensity = intensity
+        # FIXME: intensity is ignored
 
         # prepare SPI data buffer (4 bytes for each color for each pixel)
 
@@ -299,6 +259,55 @@ class WS2812:
         for i in range(end * 3, self.led_count * 3):
             a[i] = 0x11111111   # off
 
+
+class Pixel:
+    def __init__(self, a, i):
+        self.a = a
+        self.i = i
+
+    @property
+    def r(self):
+        return _get(self.a, self.i+1)
+
+    @r.setter
+    def r(self, v):
+        _set(self.a, self.i+1, v)
+
+    @property
+    def g(self):
+        return _get(self.a, self.i)
+
+    @g.setter
+    def g(self, v):
+        _set(self.a, self.i, v)
+
+    @property
+    def b(self):
+        return _get(self.a, self.i+2)
+
+    @b.setter
+    def b(self, v):
+        _set(self.a, self.i+2, v)
+
+    def __getitem__(self, i):
+        if i >= 3 or i < 0:
+            raise IndexError("only 3 colors")
+        return _get(self.a, self.i + (1,0,2)[i])
+
+    def __setitem__(self, i, v):
+        if i >= 3 or i < 0:
+            raise IndexError("only 3 colors")
+        return _set(self.a, self.i + (1,0,2)[i], v)
+
+    def off(self):
+        self.r = self.b = self.g = 0
+
+    def __len__(self):
+        return 3
+
+    def __repr__(self):
+        return "<Pixel %d (%d, %d, %d) of chain 0x%x>" % \
+            (self.i//3, self.r, self.g, self.b, addressof(self.a))
 
 @micropython.asm_thumb
 def _get(r0, r1):

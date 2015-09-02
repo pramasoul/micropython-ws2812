@@ -17,7 +17,7 @@ def tg(led_count, start):
 
     def triple(n):
         for i in range(3):
-            yield n +i
+            yield (n + i) & 0xff
 
     for i in range(led_count):
         yield triple(start + 3*i)
@@ -89,6 +89,11 @@ class WS2812TestCase(unittest.TestCase):
         leds[0] = b'foo'
         self.assertEqual(list(leds[0]), [102, 111, 111])
 
+        # The pixel.off() method works
+        leds[0] = bytearray((7,11,92))
+        leds[0].off()
+        self.assertEqual(list(leds[0]), [0]*3)
+
         # All-ones is represented correctly in the buffer
         leds[0] = b'\xff\xff\xff'
         self.assertEqual(list(leds[0]), [255, 255, 255])
@@ -150,10 +155,20 @@ class WS2812TestCase(unittest.TestCase):
                     pb[j] = random.getrandbits(8)
                 self.assertEqual(list(pix), pb)
 
+    def testMultiPixelFedIterator(self):
+        # A chain can be fed from an iterator
+        for n in range(1, 400, 19):
+            leds = None
+            gc.collect()
+            leds = WS2812(spi_bus=1, led_count=n)
+            leds.fill_buf(tg(n, 1))
+            for pix, pg in zip(leds, tg(n, 1)):
+                self.assertEqual(list(pix), list(pg))
+
 
 def main():
-    unittest.main()
-    return
+#    unittest.main()
+#    return
     # Burn-in test:
     while True:
         try:
