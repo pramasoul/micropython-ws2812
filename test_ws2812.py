@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-import logging
+#import logging
 
 import pyb
 import gc
@@ -11,7 +11,7 @@ import random
 
 from ws2812 import WS2812
 
-log = logging.getLogger("test_ws2812")
+#log = logging.getLogger("test_ws2812")
 
 def tg(led_count, start):
 
@@ -46,15 +46,16 @@ def vg():
 class WS2812TestCase(unittest.TestCase):
 
     def setUp(self):
-        logging.basicConfig(level=logging.INFO)
+        #logging.basicConfig(level=logging.INFO)
         random.seed("ws2812")
 
     def tearDown(self):
         pass
 
+    #@unittest.skip("x")
     def testSinglePixel(self):
         # buf is the correct length
-        leds = WS2812(spi_bus=1, led_count=1, intensity=1)
+        leds = WS2812(spi_bus=1, led_count=1)
         self.assertEqual(len(leds.buf), 13)
 
         # As-created the pixels are all off
@@ -121,6 +122,7 @@ class WS2812TestCase(unittest.TestCase):
         self.assertEqual('|'.join('%x' % v for v in leds.buf),
                          '13|13|31|13|33|33|33|33|13|33|11|13|0')
 
+    #@unittest.skip("x")
     def testGrindSinglePixel(self):
         # get / set work as expected
         leds = WS2812(spi_bus=1, led_count=1, intensity=1)
@@ -131,6 +133,7 @@ class WS2812TestCase(unittest.TestCase):
             self.assertEqual(list(leds[0]), [r, g, b])
 
 
+    #@unittest.skip("x")
     def testMultiPixel(self):
         # buf is the correct length
         # WS2812 can be iterated over to yield pixels
@@ -138,7 +141,7 @@ class WS2812TestCase(unittest.TestCase):
         for n in range(1, 400, 19):
             leds = None
             gc.collect()
-            leds = WS2812(spi_bus=1, led_count=n)
+            leds = WS2812(spi_bus=1, led_count=n, prealloc=False)
             self.assertEqual(len(leds), n)
             self.assertEqual(len(leds.buf), 12*n + 1)
 
@@ -155,15 +158,60 @@ class WS2812TestCase(unittest.TestCase):
                     pb[j] = random.getrandbits(8)
                 self.assertEqual(list(pix), pb)
 
+    #@unittest.skip("x")
     def testMultiPixelFedIterator(self):
         # A chain can be fed from an iterator
         for n in range(1, 400, 19):
             leds = None
             gc.collect()
-            leds = WS2812(spi_bus=1, led_count=n)
+            leds = WS2812(spi_bus=1, led_count=n, prealloc=False)
             leds.fill_buf(tg(n, 1))
             for pix, pg in zip(leds, tg(n, 1)):
                 self.assertEqual(list(pix), list(pg))
+
+
+    @unittest.skip("FIXME: blows memory")
+    def testRotatePlaces(self):
+        # A chain can be rotated
+        for n in range(1, 400, 19):
+            leds = None
+            gc.collect()
+            leds = WS2812(spi_bus=1, led_count=n)
+            leds.fill_buf(tg(n, 1))
+            for j in range(0, n, (n//7)+1):
+                gc.collect()
+                for pix, pg in zip(leds, tg(n, 1)):
+                    self.assertEqual(list(pix), list(pg))
+                #pixlist = list(list(pix) for pix in leds)
+                #rpixlist = pixlist[-j:] + pixlist[:-j]
+                leds.rotate_places(j)
+                gc.collect()
+                #self.assertEqual(list(list(pix) for pix in leds), rpixlist)
+                leds.rotate_places(-j)
+                
+
+    #@unittest.skip("FIXME: ")
+    def testRotate(self):
+        # A chain can be rotated
+        for n in range(1, 400, 19):
+            leds = None
+            t = None
+            gc.collect()
+            leds = WS2812(spi_bus=1, led_count=n, prealloc=False)
+            leds.fill_buf(tg(n, 1))
+            t = leds.a[:]
+            for j in range(0, n, (n//7)+1):
+                #gc.collect()
+                #self.assertEqual(leds.a, t)
+                for i in range(len(leds.a)):
+                    self.assertEqual(leds.a[i], t[i])
+                for cnt in range(j):
+                    leds.cw()
+                for cnt in range(j):
+                    leds.ccw()
+
+                
+
 
 
 def main():

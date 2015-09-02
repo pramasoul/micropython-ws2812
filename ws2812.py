@@ -33,7 +33,7 @@ class WS2812:
 
     buf_bytes = (0x11, 0x13, 0x31, 0x33)
 
-    def __init__(self, spi_bus=1, led_count=1, intensity=1):
+    def __init__(self, spi_bus=1, led_count=1, intensity=1, prealloc=True):
         #Params:
         # spi_bus = SPI bus ID (1 or 2)
         # led_count = count of LEDs
@@ -52,19 +52,23 @@ class WS2812:
         self.buf[-1] = 0        # make it \x00 to idle SPI low after transfer
 
         # Prepare an empty cache by index of Pixel objects
-        self.pixels = [None] * led_count
+        self.pixels = pixels = [None] * led_count
+
+        if prealloc:
+            for i in range(led_count):
+                pixels[i] = Pixel(self.buf, 3*i)
 
         # OBSOLETE
-        self.bits = array('L', range(256))
-        bb = bytearray_at(addressof(self.bits), 4*256)
-        mask = 0x03
-        buf_bytes = self.buf_bytes
-        for i in range(256):
-            index = 4*i
-            bb[index] = buf_bytes[i >> 6 & 0x03]
-            bb[index+1] = buf_bytes[i >> 4 & 0x03]
-            bb[index+2] = buf_bytes[i >> 2 & 0x03]
-            bb[index+3] = buf_bytes[i & 0x03]
+        #self.bits = array('L', range(256))
+        #bb = bytearray_at(addressof(self.bits), 4*256)
+        #mask = 0x03
+        #buf_bytes = self.buf_bytes
+        #for i in range(256):
+        #    index = 4*i
+        #    bb[index] = buf_bytes[i >> 6 & 0x03]
+        #    bb[index+1] = buf_bytes[i >> 4 & 0x03]
+        #    bb[index+2] = buf_bytes[i >> 2 & 0x03]
+        #    bb[index+3] = buf_bytes[i & 0x03]
 
         # SPI init
         self.spi = pyb.SPI(spi_bus, pyb.SPI.MASTER, baudrate=3200000, polarity=0, phase=1)
@@ -78,7 +82,7 @@ class WS2812:
     def get_led_values(self, index, rgb=None):
         # The asm function is unguarded as to index, so enforce here:
         if index >= self.led_count or index < 0:
-            raise IndexError("tried to get item", index)
+            raise IndexError("tried to get values at", index)
         a_get = _get
         ix = index * 3
         rv = rgb or bytearray(3)
@@ -90,7 +94,7 @@ class WS2812:
     def get_led_pixel(self, index):
         # The asm function is unguarded as to index, so enforce here:
         if index >= self.led_count or index < 0:
-            raise IndexError("tried to get item", index)
+            raise IndexError("tried to get pixel", index)
         pixels = self.pixels
         if pixels[index]:
             return pixels[index]
@@ -259,6 +263,95 @@ class WS2812:
         for i in range(end * 3, self.led_count * 3):
             a[i] = 0x11111111   # off
 
+    # Too fancy, creates memory stress:
+    def rotate_places(self, places):
+        length = len(self)
+        if places % length == 0: # Optimization, it works without
+            return
+        unqueued = set(range(length))
+        bb = self.buf
+        queue = []
+        #print(list(tuple(pix) for pix in self))
+        while unqueued or queue:
+            if queue:
+                dst, contents = queue.pop()
+            else:
+                src = unqueued.pop()
+                #print(src, end='')
+                dst = (src + places) % length
+                contents = bb[12*src:12*(src+1)]
+            if dst in unqueued:
+                queue.insert(0, ((dst + places) % length, \
+                                 bytes(bb[12*dst:12*(dst+1)])))
+                unqueued.remove(dst)
+            #print('->', dst, end=' ')
+            bb[12*dst:12*(dst+1)] = contents
+            #print(list(tuple(pix) for pix in self))
+
+    
+    def cw(self, start=0, stop=None):
+        # Rotates [start, stop) one pixel clockwise
+        # i.e. toward the lower index
+        length = self.led_count
+        if stop is None or stop > length:
+            stop = length
+        tmp0 = self.a[3*start]
+        tmp1 = self.a[3*start + 1]
+        tmp2 = self.a[3*start + 2]
+        self.shift(amount=-1, start=start, stop=stop)
+        self.a[3*(stop-1)] = tmp0
+        self.a[3*(stop-1) + 1] = tmp1
+        self.a[3*(stop-1) + 2] = tmp2
+
+    def ccw(self, start=0, stop=None):
+        # Rotates [start, stop) one pixel counter-clockwise
+        # i.e. toward the higher index
+        length = self.led_count
+        if stop is None or stop > length:
+            stop = length
+        tmp0 = self.a[3*(stop-1)]
+        tmp1 = self.a[3*(stop-1) + 1]
+        tmp2 = self.a[3*(stop-1) + 2]
+        self.shift(amount=1, start=start, stop=stop)
+        self.a[3*start] = tmp0
+        self.a[3*start + 1] = tmp1
+        self.a[3*start + 2] = tmp2
+
+    def shift(self, amount=1, start=0, stop=None):
+        # Shifts leds[start:end] by amount to the right
+        # amount can be negative, making it a left shift
+        length = self.led_count
+        if stop is None or stop > length:
+            stop = length
+        if amount < 0:
+            src = start - amount
+            dest = start
+            n = max(stop - start + amount, 0)
+        else:
+            src = start
+            dest = start + amount
+            n = max(stop - start - amount, 0)
+        self._wordsmove(3*dest, 3*src, 3*n)
+
+    # styled after memmove(dest, src, n), but moving words instead of bytes
+    def _wordsmove(self, dest, src, n):
+        #print("_wordsmove(%d, %d, %d)" % (dest, src, n), end = ' ')
+        assert n >= 0
+        a = self.a
+        delta = dest - src
+        if src < dest:
+            first = src + n - 1
+            last = src - 1
+            step = -1
+        else:
+            first = src
+            last = src + n
+            step = 1
+        #print("range(%d, %d, %d) delta %d" % (first, last, step, delta))
+        for i in range(first, last, step): # The index of the one moving
+            #print(" %d->%d" % (i, i+delta), end='')
+            a[i+delta] = a[i]
+
 
 class Pixel:
     def __init__(self, a, i):
@@ -308,6 +401,7 @@ class Pixel:
     def __repr__(self):
         return "<Pixel %d (%d, %d, %d) of chain 0x%x>" % \
             (self.i//3, self.r, self.g, self.b, addressof(self.a))
+
 
 @micropython.asm_thumb
 def _get(r0, r1):
