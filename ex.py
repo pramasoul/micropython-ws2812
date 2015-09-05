@@ -8,7 +8,7 @@ import logging
 from ubinascii import hexlify, unhexlify
 
 from async_pyb import new_event_loop, set_event_loop, get_event_loop, \
-    EventLoop, GetRunningLoop, Future, TimeoutError, \
+    EventLoop, GetRunningLoop, Sleep, Future, TimeoutError, \
     coroutine, sleep, wait_for
 
 from coro_cli import CoroCLI, inject_standard_commands
@@ -41,6 +41,19 @@ class Lightshow:
         self.leds = WS2812(spi_bus=config['leds'].get('spi'), \
                            led_count=config['leds'].get('qty'))
 
+        self.leds_sync_last_done = 0
+        self.leds_need_sync = False
+
+
+    def add_color_to(self, i, color):
+        led = self.leds[i]
+        for i in range(len(led)):
+            led[i] += color[i]
+
+    def sub_color_from(self, i, color):
+        led = self.leds[i]
+        for i in range(len(led)):
+            led[i] -= color[i]
 
     @coroutine
     def flash_LED(self, led, dur=1):
@@ -81,33 +94,64 @@ class Lightshow:
 
     @coroutine
     def perk(self, cli, cmd, rol):
+        sdelay, _, scolor = str(rol, 'ASCII').partition(' ')
+        try:
+            delay = int(sdelay)
+        except:
+            delay = 100
+        try:
+            color = eval(scolor)
+        except:
+            color = bytes((8,0,0))
+        if not hasattr(self, 'perk_quit'):
+            self.perk_quit = 0
         p = Percolator(self.leds)
-        self.perk_quit = False
-        self.perk_color = bytes((32,0,0))
+        #self.perk_color = bytes((32,0,0))
         self.psd = 100
-        prev_i = 63
+        prev_i = p.top_i
         i = None
-        while not self.perk_quit:
-            self.leds[prev_i].off()
+        while True:
             if i is None:
-                i = 63
-            self.leds[i] = self.perk_color
-            yield from self.show_for(self.psd)
+                i = p.top_i
+            self.add_color_to(i, color)
+            if p.at_mid(i):
+                yield from self.show_for(14*delay)
+            else:
+                yield from self.show_for(delay)
             prev_i = i
             i = p.down(i, rng()&1)
-
+            self.sub_color_from(prev_i, color)
+            if self.perk_quit:
+                break
+        assert self.perk_quit
+        self.perk_quit -= 1
 
 
     @coroutine
     def show_for(self, duration):
-        self.leds.sync()
+        self.leds_need_sync = True
         yield from sleep(duration)
+
+
+    @coroutine
+    def keep_leds_current(self, interval):
+        last_check_time = 0
+        while True:
+            now = self.loop.time()
+            if now < last_check_time + interval:
+                yield Sleep(last_check_time + interval - now)
+            last_check_time = self.loop.time()
+            if self.leds_need_sync:
+                self.leds.sync()
+                self.leds_sync_last_done = self.loop.time()
+                self.leds_need_sync = False
 
 
     @coroutine
     def master(self):
         #self.radio_listener_quit = 0
-        #yield self.radio_listener()
+        self.loop = yield GetRunningLoop(None)
+        yield self.keep_leds_current(10)
         while True:
             yield from self.flash_LED(self.act_led)
             yield from sleep(1000)
@@ -163,7 +207,7 @@ def main():
     def eval_cmd(cli, cmd, rol):
         d = {'cli': cli,
              'loop': (yield GetRunningLoop(None)),
-             'lightshow': lightshow,
+             'l': lightshow,
              'pyb': pyb
         }
         try:
@@ -176,7 +220,7 @@ def main():
     def exec_cmd(cli, cmd, rol):
         d = {'cli': cli,
              'loop': (yield GetRunningLoop(None)),
-             'lightshow': lightshow,
+             'l': lightshow,
              'pyb': pyb
         }
         try:
