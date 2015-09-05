@@ -108,7 +108,7 @@ class WS2812:
         # value is bytearray((r,g,b)) or bytes((r,g,b))
         # The asm function is unguarded as to index, so enforce here
         if index >= self.led_count or index < 0:
-            raise IndexError
+            raise IndexError("try to set LED", index, "out of", self.led_count)
         if isinstance(value, bytes):
             value = bytearray_at(addressof(value), 3)
         elif isinstance(value, Pixel):
