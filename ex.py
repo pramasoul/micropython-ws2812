@@ -41,19 +41,8 @@ class Lightshow:
         self.leds = WS2812(spi_bus=config['leds'].get('spi'), \
                            led_count=config['leds'].get('qty'))
 
-        self.leds_sync_last_done = 0
-        self.leds_need_sync = False
+        self.percolator = Percolator(self.leds)
 
-
-    def add_color_to(self, i, color):
-        led = self.leds[i]
-        for i in range(len(led)):
-            led[i] += color[i]
-
-    def sub_color_from(self, i, color):
-        led = self.leds[i]
-        for i in range(len(led)):
-            led[i] -= color[i]
 
     @coroutine
     def flash_LED(self, led, dur=1):
@@ -103,55 +92,16 @@ class Lightshow:
             color = eval(scolor)
         except:
             color = bytes((8,0,0))
-        if not hasattr(self, 'perk_quit'):
-            self.perk_quit = 0
-        p = Percolator(self.leds)
-        #self.perk_color = bytes((32,0,0))
-        self.psd = 100
-        prev_i = p.top_i
-        i = None
-        while True:
-            if i is None:
-                i = p.top_i
-            self.add_color_to(i, color)
-            if p.at_mid(i):
-                yield from self.show_for(14*delay)
-            else:
-                yield from self.show_for(delay)
-            prev_i = i
-            i = p.down(i, rng()&1)
-            self.sub_color_from(prev_i, color)
-            if self.perk_quit:
-                break
-        assert self.perk_quit
-        self.perk_quit -= 1
-
-
-    @coroutine
-    def show_for(self, duration):
-        self.leds_need_sync = True
-        yield from sleep(duration)
-
-
-    @coroutine
-    def keep_leds_current(self, interval):
-        last_check_time = 0
-        while True:
-            now = self.loop.time()
-            if now < last_check_time + interval:
-                yield Sleep(last_check_time + interval - now)
-            last_check_time = self.loop.time()
-            if self.leds_need_sync:
-                self.leds.sync()
-                self.leds_sync_last_done = self.loop.time()
-                self.leds_need_sync = False
+        if not hasattr(self.percolator, 'perk_quit'):
+            self.percolator.perk_quit = 0
+        yield self.percolator.perk(delay, color)
 
 
     @coroutine
     def master(self):
         #self.radio_listener_quit = 0
         self.loop = yield GetRunningLoop(None)
-        yield self.keep_leds_current(10)
+        yield self.percolator.keep_leds_current(10)
         while True:
             yield from self.flash_LED(self.act_led)
             yield from sleep(1000)
