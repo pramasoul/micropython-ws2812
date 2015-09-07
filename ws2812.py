@@ -81,7 +81,7 @@ class WS2812:
 
     def get_led_values(self, index, rgb=None):
         # The asm function is unguarded as to index, so enforce here:
-        if index >= self.led_count or index < 0:
+        if index >= self.led_count or index < -self.led_count:
             raise IndexError("tried to get values at", index)
         a_get = _get
         ix = index * 3
@@ -93,7 +93,7 @@ class WS2812:
 
     def get_led_pixel(self, index):
         # The asm function is unguarded as to index, so enforce here:
-        if index >= self.led_count or index < 0:
+        if index >= self.led_count or index < -self.led_count:
             raise IndexError("tried to get pixel", index)
         pixels = self.pixels
         if pixels[index]:
@@ -211,7 +211,15 @@ class WS2812:
         #Send buffer over SPI.
         self.spi.send(self.buf)
 
-    sync = send_buf             # better name
+    def sync(self, to=None):
+        if to is None:
+            self.spi.send(self.buf)
+        else:
+            short_buf = bytearray_at(addressof(self.a), 3*4*to + 1) # extra byte
+            t = short_buf[-1]
+            short_buf[-1] = 0
+            self.spi.send(short_buf)
+            short_buf[-1] = t
 
     def was_update_buf(self, data, start=0):
         # Fill a part of the buffer with RGB data.
