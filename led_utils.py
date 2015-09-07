@@ -3,16 +3,19 @@
 #from ws2812 import WS2812
 import random
 from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
-from pyb import rng
+from pyb import Timer, rng
 
 class Percolator:
-    def __init__(self, leds):
+    def __init__(self, leds, timer=None):
         # Assume 8x8, and 0-based, for now
         self.leds = leds
+#        if timer is None:
+#            self.timer = Timer(6)
         self.leds_sync_last_done = 0
         self.leds_need_sync = False
         self.top_i = len(leds) - 1
         self.bottom_i = 0
+        self.random = random.SystemRandom()
 
     def add_color_to(self, i, color):
         led = self.leds[i]
@@ -60,6 +63,18 @@ class Percolator:
     def show_for(self, duration):
         self.leds_need_sync = True
         yield from sleep(duration)
+
+    @coroutine
+    def timer_keep_leds_current(self, interval):
+        # Using a timer to sync the leds seems clever, but one might
+        # be half-way through a non-atomic update of color when the
+        # timer interrupt hits, so this is often not the best way to
+        # do the job
+        timer = self.timer
+        leds = self.leds
+        timer.callback(None)
+        timer.init(freq=round(1000/interval))
+        timer.callback(lambda t: leds.sync())
 
     @coroutine
     def keep_leds_current(self, interval):
@@ -117,6 +132,7 @@ class Percolator:
 
     @coroutine
     def play(self):
+        random = self.random
         self.play_on = True
         self.perk_quit = 0
         while self.play_on:
