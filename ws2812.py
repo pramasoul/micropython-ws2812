@@ -96,13 +96,14 @@ class WS2812:
         if index >= self.led_count or index < -self.led_count:
             raise IndexError("tried to get pixel", index)
         pixels = self.pixels
-        if pixels[index]:
-            return pixels[index]
-        pix = pixels[index] = Pixel(self.buf, index*3)
+        pix = pixels[index]
+        if pix is None:
+            pix = pixels[index] = Pixel(self.buf, index*3)
         return pix
 
     __getitem__ = get_led_pixel
 
+    set_led_buf = bytearray(3)
     def set_led(self, index, value):
         # set LED buffer at index to value
         # value is bytearray((r,g,b)) or bytes((r,g,b))
@@ -110,9 +111,16 @@ class WS2812:
         if index >= self.led_count or index < 0:
             raise IndexError("try to set LED", index, "out of", self.led_count)
         if isinstance(value, bytes):
-            value = bytearray_at(addressof(value), 3)
-        elif isinstance(value, Pixel):
-            value = bytearray(list(value))
+            value = addressof(value)
+        elif isinstance(value, bytearray):
+            pass
+        else:
+            vb = self.set_led_buf
+            it = iter(value)
+            vb[0] = next(it)
+            vb[1] = next(it)
+            vb[2] = next(it)
+            value = vb
         return self.a_set_rgb_values(self.buf, index, value)
 
     __setitem__ = set_led
@@ -365,6 +373,7 @@ class Pixel:
     def __init__(self, a, i):
         self.a = a
         self.i = i
+        self.cmap = (1,0,2)
 
     @property
     def r(self):
@@ -393,12 +402,12 @@ class Pixel:
     def __getitem__(self, i):
         if i >= 3 or i < 0:
             raise IndexError("only 3 colors")
-        return _get(self.a, self.i + (1,0,2)[i])
+        return _get(self.a, self.i + self.cmap[i])
 
     def __setitem__(self, i, v):
         if i >= 3 or i < 0:
             raise IndexError("only 3 colors")
-        return _set(self.a, self.i + (1,0,2)[i], v)
+        return _set(self.a, self.i + self.cmap[i], v)
 
     def off(self):
         self.r = self.b = self.g = 0

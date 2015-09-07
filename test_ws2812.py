@@ -88,7 +88,15 @@ class WS2812TestCase(unittest.TestCase):
 
         # A pixel position in a chain can be mutated by setting it with bytes
         leds[0] = b'foo'
-        self.assertEqual(list(leds[0]), [102, 111, 111])
+        self.assertEqual([pix.r, pix.g, pix.b], [102, 111, 111])
+
+        # A pixel position in a chain can be mutated by setting it with a list
+        leds[0] = [11, 22, 33]
+        self.assertEqual([pix.r, pix.g, pix.b], [11, 22, 33])
+
+        # A pixel position in a chain can be mutated by setting it with an iterator
+        leds[0] = (7*i + 3 for i in range(3))
+        self.assertEqual([pix.r, pix.g, pix.b], [3, 10, 17])
 
         # The pixel.off() method works
         leds[0] = bytearray((7,11,92))
@@ -131,6 +139,25 @@ class WS2812TestCase(unittest.TestCase):
             g = leds[0].g = random.getrandbits(8)
             b = leds[0].b = random.getrandbits(8)
             self.assertEqual(list(leds[0]), [r, g, b])
+
+
+    def testPixelAssignPixel(self):
+        # A pixel can be assigned to another pixel
+        leds = WS2812(spi_bus=1, led_count=3)
+        for i in range(len(leds)):
+            leds[i] = (i, 2*i, 3*i)
+        self.assertEqual(list(leds[0]), [0, 0, 0])
+        self.assertEqual(list(leds[1]), [1, 2, 3])
+        self.assertEqual(list(leds[2]), [2, 4, 6])
+        leds[0] = leds[2]
+        leds[2] = leds[1]
+        leds[1] = [19, 23, 29]
+        self.assertEqual(list(leds[0]), [2, 4, 6])
+        self.assertEqual(list(leds[1]), [19, 23, 29])
+        self.assertEqual(list(leds[2]), [1, 2, 3])
+        self.assertIsNot(leds[0], leds[1])
+        self.assertIsNot(leds[0], leds[2])
+        self.assertIsNot(leds[1], leds[2])
 
 
     #@unittest.skip("x")
@@ -193,7 +220,7 @@ class WS2812TestCase(unittest.TestCase):
     #@unittest.skip("FIXME: ")
     def testRotate(self):
         # A chain can be rotated
-        for n in range(1, 400, 19):
+        for n in (1, 2, 7, 16, 33, 70, 190, 244, 400):
             leds = None
             t = None
             gc.collect()
