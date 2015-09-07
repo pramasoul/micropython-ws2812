@@ -130,6 +130,29 @@ class WS2812TestCase(unittest.TestCase):
         self.assertEqual('|'.join('%x' % v for v in leds.buf),
                          '13|13|31|13|33|33|33|33|13|33|11|13|0')
 
+    def testMemoryUsedInOperations(self):
+        leds = WS2812(spi_bus=1, led_count=64)
+        foo = b'foo'
+        bar = bytearray(range(3))
+        foolist = list(range(3))
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            leds[0].g = i          # no leak
+            leds[0] = b'\x08\x00\x00' # no leak
+            leds[0] = foo           # no leak
+            leds[0] = bar           # no leak
+            p = leds[i]             # no leak
+            r = leds[i].r           # no leak
+            #r,g,b = leds[i]                         # -64 each
+            r,g,b = leds[i].r, leds[i].g, leds[i].b # no leak
+            t = leds[i][0]          # no leak
+            for k in range(len(leds[i])): # no leak
+                leds[i][k] = leds[i-1][k]
+            leds[i] = foolist       # no leak
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+
     #@unittest.skip("x")
     def testGrindSinglePixel(self):
         # get / set work as expected

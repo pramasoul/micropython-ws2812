@@ -116,10 +116,14 @@ class WS2812:
             pass
         else:
             vb = self.set_led_buf
-            it = iter(value)
-            vb[0] = next(it)
-            vb[1] = next(it)
-            vb[2] = next(it)
+            try:
+                for i in range(3):
+                    vb[i] = value[i]
+            except:
+                it = iter(value)
+                vb[0] = next(it)
+                vb[1] = next(it)
+                vb[2] = next(it)
             value = vb
         return self.a_set_rgb_values(self.buf, index, value)
 
