@@ -1,7 +1,7 @@
 # Experimentation
 
 from ws2812 import WS2812
-from percolator import Percolator
+from led_utils import Percolator
 
 import logging
 
