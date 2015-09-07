@@ -1,7 +1,7 @@
 #import pyb
 #import gc
 #from ws2812 import WS2812
-#import random
+import random
 from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
 from pyb import rng
 
@@ -76,20 +76,52 @@ class Percolator:
                 self.leds_need_sync = False
 
     @coroutine
-    def perk(self, delay, color):
-        prev_i = self.top_i
+    def perk(self, delay, color, start=None):
+        #prev_i = self.top_i
+        stoichiometric = (8,8,8)
         i = None
         while True:
             if i is None:
-                i = self.top_i
+                if start is None:
+                    i = self.top_i
+                else:
+                    i = start
             self.add_color_to(i, color)
+            yield from self.show_for(delay)
             if self.at_mid(i):
-                yield from self.show_for(14*delay)
-            else:
-                yield from self.show_for(delay)
+                new_color = yield from self.react_at(i)
+                if new_color is None:
+                    return
+                else:
+                    color = new_color
             prev_i = i
             i = self.down(i, rng()&1)
             self.sub_color_from(prev_i, color)
+            self.leds_need_sync = True
+            if i is None:
+                return color
             if self.perk_quit:
                 break
         self.perk_quit -= 1
+
+
+    @coroutine
+    def react_at(self, i):
+        stoichiometric = (8,8,8)
+        led = self.leds[i]
+        if all(a >= b for a,b in zip(led, stoichiometric)):
+            return stoichiometric
+        yield
+        return None
+
+
+    @coroutine
+    def play(self):
+        self.play_on = True
+        self.perk_quit = 0
+        while self.play_on:
+            delay = random.randrange(30,100)
+            color = random.choice(((8,0,0), (0,8,0), (0,0,8)))
+            yield self.perk(delay, color)
+            yield from sleep(random.randrange(200, 300))
+
