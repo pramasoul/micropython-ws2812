@@ -94,8 +94,17 @@ class Lightshow:
             color = bytes((8,0,0))
         if not hasattr(self.percolator, 'perk_quit'):
             self.percolator.perk_quit = 0
-        yield self.percolator.perk(delay, color)
+        yield self.percolator.perk(delay, color) # Launch this and return
 
+
+    @coroutine
+    def play(self, cli, cmd, rol):
+        yield self.percolator.play()
+
+    @coroutine
+    def stop(self, cli, cmd, rol):
+        self.percolator.play_on = False
+        yield
 
     @coroutine
     def master(self):
@@ -190,6 +199,8 @@ def main():
     lightshow.a_flag = 0
 
     cli.command_dispatch['perk'] = lightshow.perk
+    cli.command_dispatch['play'] = lightshow.play
+    cli.command_dispatch['stop'] = lightshow.stop
     cli.command_dispatch['exec'] = exec_cmd
     cli.command_dispatch['eval'] = eval_cmd
 
