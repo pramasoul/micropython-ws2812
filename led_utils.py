@@ -178,7 +178,7 @@ class Ball:
 class RingRamp(Lights):
     def __init__(self, leds, timer=None):
         super().__init__(leds, timer)
-        self.g = -60.0
+        self.g = -10.0
         self.bottom = 7
         self.arc = range(-self.bottom, len(leds)-self.bottom)
         #print("arc", self.arc)  # DEBUG
@@ -199,19 +199,30 @@ class RingRamp(Lights):
         bottom = self.bottom
         arc_len = len(self.leds)
         for ball in self.balls:
-            for i, color in ball.last_shown:
-                self.sub_color_from(i, color)
-                ball.last_shown = []
+            self.change_display(subtract=ball.last_shown)
             #print(ball, end='') # DEBUG
             i = round(ball.θ * pix_per_radian + bottom) % c 
             assert i >= 0
             #print("%2.2d" % i, ball, end='\r')      # DEBUG
+            ball.last_shown = []
             if i < arc_len:           # Show only pixels on our arc
                 #yield from self.supertitle("%r at %d" % (ball, i)) # DEBUG
                 #print("at", i) # DEBUG
-                self.add_color_to(i, ball.color)
                 ball.last_shown.append((i, ball.color))
+            self.change_display(add=ball.last_shown)
         self.leds.sync()
+
+
+    def change_display(self, subtract=[], add=[]):
+        # Positions in led space
+        arc_len = len(self.leds)
+        for i, color in subtract:
+            if i < arc_len:           # Show only pixels on our arc
+                self.sub_color_from(i, color)
+        for i, color in add:
+            if i < arc_len:           # Show only pixels on our arc
+                self.add_color_to(i, color)
+
 
     @coroutine
     def integrate_continuously(self, nap=10):
