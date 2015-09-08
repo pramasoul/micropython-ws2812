@@ -160,11 +160,13 @@ class Ball:
     def __init__(self):
         self.θ = 3.0
         self.ω = 0.0
+        self.Fd = 0.1
         self.color = bytearray((8,0,0))
-        self.last_shown_at_i = None
+        self.last_shown = []
     
     def integrate(self, dt, a=0):
-        self.ω = self.ω + a * dt
+        ω = self.ω
+        self.ω = ω + (a - self.Fd * ω * abs(ω)) * dt
         self.θ = (self.θ + self.ω * dt) % (2*π)
 
     def __repr__(self):
@@ -179,7 +181,7 @@ class RingRamp(Lights):
         self.g = -10.0
         self.bottom = 7
         self.arc = range(-self.bottom, len(leds)-self.bottom)
-        print("arc", self.arc)  # DEBUG
+        #print("arc", self.arc)  # DEBUG
         self.circumference = 60
         self.r = self.circumference / (2*π)
         self.balls = []
@@ -196,24 +198,19 @@ class RingRamp(Lights):
         pix_per_radian = c / (2*π)
         bottom = self.bottom
         arc_len = len(self.leds)
-        # Cheap
-#        for led in self.leds:
-#            led.off()
         for ball in self.balls:
-            if ball.last_shown_at_i is not None:
-                self.sub_color_from(ball.last_shown_at_i, ball.color)
-            # cheap for now
+            for i, color in ball.last_shown:
+                self.sub_color_from(i, color)
+                ball.last_shown = []
             #print(ball, end='') # DEBUG
             i = round(ball.θ * pix_per_radian + bottom) % c 
             assert i >= 0
-            print("%2.2d" % i, ball, end='\r')      # DEBUG
+            #print("%2.2d" % i, ball, end='\r')      # DEBUG
             if i < arc_len:           # Show only pixels on our arc
                 #yield from self.supertitle("%r at %d" % (ball, i)) # DEBUG
                 #print("at", i) # DEBUG
                 self.add_color_to(i, ball.color)
-                ball.last_shown_at_i = i
-            else:
-                ball.last_shown_at_i = None
+                ball.last_shown.append((i, ball.color))
         self.leds.sync()
 
     @coroutine
