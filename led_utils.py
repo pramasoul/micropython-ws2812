@@ -176,12 +176,18 @@ class Ball:
 
 
 class RingRamp(Lights):
+    # Coordinate systems:
+    # 1) angle in radians
+    # 2) pixels clockwise from the bottom pixel
+    # 3) led index
+    #
+    # To suit the neopixel rings, we adopt θ = 0 at the bottom,
+    # and clockwise as the direction of increasing θ
+
     def __init__(self, leds, timer=None):
         super().__init__(leds, timer)
         self.g = -10.0
         self.bottom = 7
-        self.arc = range(-self.bottom, len(leds)-self.bottom)
-        #print("arc", self.arc)  # DEBUG
         self.circumference = 60
         self.r = self.circumference / (2*π)
         self.balls = []
@@ -196,33 +202,73 @@ class RingRamp(Lights):
     def show_balls(self):
         c = self.circumference
         pix_per_radian = c / (2*π)
-        bottom = self.bottom
-        arc_len = len(self.leds)
         for ball in self.balls:
-            self.change_display(subtract=ball.last_shown)
+            self.change_leds(subtract=ball.last_shown)
             #print(ball, end='') # DEBUG
-            i = round(ball.θ * pix_per_radian + bottom) % c 
-            assert i >= 0
             #print("%2.2d" % i, ball, end='\r')      # DEBUG
-            ball.last_shown = []
-            if i < arc_len:           # Show only pixels on our arc
-                #yield from self.supertitle("%r at %d" % (ball, i)) # DEBUG
-                #print("at", i) # DEBUG
-                ball.last_shown.append((i, ball.color))
-            self.change_display(add=ball.last_shown)
+            ball.last_shown = self.display_list_for_angle(ball.θ, ball.color)
+            self.change_leds(add=ball.last_shown)
         self.leds.sync()
 
 
-    def change_display(self, subtract=[], add=[]):
-        # Positions in led space
-        arc_len = len(self.leds)
+    def change_leds(self, subtract=[], add=[]):
+        # Input positions in pixel circle space
+        # Rotates to LED space and clips to available arc
+        c = self.circumference
+        bottom = self.bottom
+        led_len = len(self.leds)
         for i, color in subtract:
-            if i < arc_len:           # Show only pixels on our arc
-                self.sub_color_from(i, color)
+            k = (i + bottom) % c
+            if k < led_len:
+                self.sub_color_from(k, color)
         for i, color in add:
-            if i < arc_len:           # Show only pixels on our arc
-                self.add_color_to(i, color)
+            k = (i + bottom) % c
+            if k < led_len:
+                self.add_color_to(k, color)
 
+
+    def display_list_for_angle(self, θ, color, blur=1.0):
+        c = self.circumference
+        pix_per_radian = c / (2*π)
+        return self.display_list_for(θ * pix_per_radian,
+                                     color, blur)
+
+
+    def display_list_for(self, x, color, blur=1.0):
+        # In pixel circle coordinates
+        c = self.circumference
+        return list((i%c, bytes(round(v*w) for v in color))
+                     for i, w in self.pixel_weights_for(x, blur))
+
+
+    def pixel_weights_for(self, x, blur=1.0):
+        # In arbitrary pixel coordinates
+        sharp = 1.0 / blur
+        nearest_i = round(x)
+        lattice_offset = nearest_i - x # Add to x to get to nearest lattice point
+                        # Subtract from lattice point to get to x + some integer
+        erfs = []
+        i = nearest_i
+        while True:
+            e = math.erf(sharp * (i - nearest_i - 0.5 + lattice_offset))
+            if e < -0.992:
+                break
+            erfs.insert(0, (i, e))
+            i -= 1
+        i = nearest_i + 1
+        while True:
+            e = math.erf(sharp * (i - nearest_i - 0.5 + lattice_offset))
+            if e > 0.992:
+                break
+            erfs.append((i, e))
+            i += 1
+        rv = []
+        prior_e = -1.0
+        for i, e in erfs:
+            rv.append((i-1, 0.5 * (e - prior_e)))
+            prior_e = e
+        rv.append((i, 0.5 * (1.0 - e)))
+        return rv
 
     @coroutine
     def integrate_continuously(self, nap=10):
