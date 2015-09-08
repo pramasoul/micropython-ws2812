@@ -1,7 +1,8 @@
+# -*- coding: utf-8 -*-
 # Experimentation
 
 from ws2812 import WS2812
-from led_utils import Percolator
+from led_utils import Percolator, RingRamp, Ball
 
 import logging
 
@@ -15,7 +16,7 @@ from coro_cli import CoroCLI, inject_standard_commands
 
 import pyb
 from pyb import SPI, Pin, info, millis, elapsed_millis, \
-    micros, elapsed_micros, rng
+    micros, elapsed_micros, rng, Timer
 
 log = logging.getLogger("test")
 
@@ -161,6 +162,11 @@ def main():
         yield from cli.write(b'\x1b[s\x1b[1;40H\x1b[2K')
         yield from cli.write(b'Hey there!')
         yield from cli.write('\x1b[u')
+        rr = RingRamp(WS2812(2, 45), timer=Timer(6))
+        rr.supertitle = lightshow.supertitle
+        #yield from rr.timer_keep_leds_current()
+        rr.balls.append(Ball())
+        yield rr.integrate_continuously()
 
     @coroutine
     def eval_cmd(cli, cmd, rol):

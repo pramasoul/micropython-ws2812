@@ -1,12 +1,14 @@
+# -*- coding: utf-8 -*-
 import random
+import math
 from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
-from pyb import Timer, rng
+from pyb import Timer, rng, micros, elapsed_micros
+from uctypes import addressof
 
-class Lights():
+class Lights:
     def __init__(self, leds, timer=None):
         self.leds = leds
-        #if timer is None:
-        #    self.timer = Timer(6)
+        self.timer = timer
         self.leds_sync_last_done = 0
         self.leds_need_sync = False
 
@@ -26,16 +28,19 @@ class Lights():
         yield from sleep(duration)
 
     @coroutine
-    def timer_keep_leds_current(self, interval):
+    def timer_keep_leds_current(self, interval=10):
         # Using a timer to sync the leds seems clever, but one might
         # be half-way through a non-atomic update of color when the
         # timer interrupt hits, so this is often not the best way to
         # do the job
         timer = self.timer
+        if timer is None:
+            return
         leds = self.leds
         timer.callback(None)
         timer.init(freq=round(1000/interval))
         timer.callback(lambda t: leds.sync())
+        yield
 
     @coroutine
     def keep_leds_current(self, interval):
@@ -53,9 +58,9 @@ class Lights():
 
 
 class Percolator(Lights):
-    def __init__(self, leds, timer=None):
+    def __init__(self, leds):
         # Assume 8x8, and 0-based, for now
-        super().__init__(leds, timer)
+        super().__init__(leds)
 #        self.leds = leds
         #if timer is None:
         #    self.timer = Timer(6)
@@ -148,3 +153,77 @@ class Percolator(Lights):
             yield self.perk(delay, color)
             yield from sleep(random.randrange(200, 300))
 
+
+π = math.pi
+
+class Ball:
+    def __init__(self):
+        self.θ = 3.0
+        self.ω = 0.0
+        self.color = bytearray((8,0,0))
+        self.last_shown_at_i = None
+    
+    def integrate(self, dt, a=0):
+        self.ω = self.ω + a * dt
+        self.θ = (self.θ + self.ω * dt) % (2*π)
+
+    def __repr__(self):
+        return "<Ball θ %f, ω %f, color %r>" % \
+            (self.θ, self.ω, tuple(iter(self.color)))
+        
+
+
+class RingRamp(Lights):
+    def __init__(self, leds, timer=None):
+        super().__init__(leds, timer)
+        self.g = -10.0
+        self.bottom = 7
+        self.arc = range(-self.bottom, len(leds)-self.bottom)
+        print("arc", self.arc)  # DEBUG
+        self.circumference = 60
+        self.r = self.circumference / (2*π)
+        self.balls = []
+
+    def integrate(self, dt):
+        # To suit the neopixel rings, we adopt θ = 0 at the bottom,
+        # and clockwise as the direction of increasing θ
+        for ball in self.balls:
+            ball.integrate(dt, a = self.g * math.sin(ball.θ) / self.r)
+
+
+    def show_balls(self):
+        c = self.circumference
+        pix_per_radian = c / (2*π)
+        bottom = self.bottom
+        arc_len = len(self.leds)
+        # Cheap
+#        for led in self.leds:
+#            led.off()
+        for ball in self.balls:
+            if ball.last_shown_at_i is not None:
+                self.sub_color_from(ball.last_shown_at_i, ball.color)
+            # cheap for now
+            #print(ball, end='') # DEBUG
+            i = round(ball.θ * pix_per_radian + bottom) % c 
+            assert i >= 0
+            print("%2.2d" % i, ball, end='\r')      # DEBUG
+            if i < arc_len:           # Show only pixels on our arc
+                #yield from self.supertitle("%r at %d" % (ball, i)) # DEBUG
+                #print("at", i) # DEBUG
+                self.add_color_to(i, ball.color)
+                ball.last_shown_at_i = i
+            else:
+                ball.last_shown_at_i = None
+        self.leds.sync()
+
+    @coroutine
+    def integrate_continuously(self, nap=10):
+        #print("integrating continuously, napping %d" % nap)
+        tscale = 1 / 1000000
+        then = micros()
+        while True:
+            dt = elapsed_micros(then)
+            then = micros()
+            self.integrate(dt * tscale)
+            self.show_balls()
+            yield from sleep(nap)
