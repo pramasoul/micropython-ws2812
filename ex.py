@@ -162,12 +162,13 @@ def main():
         yield from cli.write(b'\x1b[s\x1b[1;40H\x1b[2K')
         yield from cli.write(b'Hey there!')
         yield from cli.write('\x1b[u')
-        rr = RingRamp(WS2812(2, 45), timer=Timer(6))
+        rr = RingRamp(WS2812(2, 45), circumference=60, bottom=7, g=-10.0)
         rr.supertitle = lightshow.supertitle
         #yield from rr.timer_keep_leds_current()
-        rr.balls.append(Ball(ω=5.5, Fd=0.001, color=(8,0,0)))
-        rr.balls.append(Ball(ω=-5.0, Fd=0.001, color=(0,8,0)))
-        rr.balls.append(Ball(θ=3.1, Fd=0.001, color=(0,0,8)))
+        rr.balls.append(Ball(ω=2.1, Fd=0.01, color=(255,0,0)))
+        rr.balls.append(Ball(ω=2.08, Fd=0.01, color=(0,255,0)))
+        #rr.balls.append(Ball(θ=3.1, Fd=0.0025, color=(0,0,255)))
+        rr.balls.append(Ball(θ=-0.733, ω=0, Fd=0.01, color=(0,0,255)))
         yield rr.integrate_continuously()
 
     @coroutine

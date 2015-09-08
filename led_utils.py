@@ -61,11 +61,6 @@ class Percolator(Lights):
     def __init__(self, leds):
         # Assume 8x8, and 0-based, for now
         super().__init__(leds)
-#        self.leds = leds
-        #if timer is None:
-        #    self.timer = Timer(6)
-#        self.leds_sync_last_done = 0
-#        self.leds_need_sync = False
         self.top_i = len(leds) - 1
         self.bottom_i = 0
         self.random = random.SystemRandom()
@@ -172,7 +167,6 @@ class Ball:
     def __repr__(self):
         return "<Ball θ %f, ω %f, color %r>" % \
             (self.θ, self.ω, tuple(iter(self.color)))
-        
 
 
 class RingRamp(Lights):
@@ -184,12 +178,20 @@ class RingRamp(Lights):
     # To suit the neopixel rings, we adopt θ = 0 at the bottom,
     # and clockwise as the direction of increasing θ
 
-    def __init__(self, leds, timer=None):
-        super().__init__(leds, timer)
-        self.g = -10.0
-        self.bottom = 7
-        self.circumference = 60
+    def __init__(self, leds,
+                 circumference=None,
+                 bottom=0,
+                 g=-1.0,
+                 blur=None):
+        super().__init__(leds)
+        self.g = g
+        self.bottom = bottom
+        if circumference is not None:
+            self.circumference = circumference
+        else:
+            self.circumference = led(leds)
         self.r = self.circumference / (2*π)
+        self.blur = blur
         self.balls = []
 
     def integrate(self, dt):
@@ -205,7 +207,8 @@ class RingRamp(Lights):
             self.change_leds(subtract=ball.last_shown)
             #print(ball, end='') # DEBUG
             #print("%2.2d" % i, ball, end='\r')      # DEBUG
-            ball.last_shown = self.display_list_for_angle(ball.θ, ball.color)
+            ball.last_shown = \
+                self.display_list_for_angle(ball.θ, ball.color, self.blur)
             self.change_leds(add=ball.last_shown)
         self.leds.sync()
 
@@ -242,8 +245,10 @@ class RingRamp(Lights):
 
     def pixel_weights_for(self, x, blur=1.0):
         # In arbitrary pixel coordinates
-        sharp = 1.0 / blur
         nearest_i = round(x)
+        if not blur:
+            return [(nearest_i, 1)]
+        sharp = 1.0 / blur
         lattice_offset = nearest_i - x # Add to x to get to nearest lattice point
                         # Subtract from lattice point to get to x + some integer
         erfs = []
