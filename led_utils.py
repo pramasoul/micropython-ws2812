@@ -157,11 +157,11 @@ class Percolator(Lights):
 π = math.pi
 
 class Ball:
-    def __init__(self):
-        self.θ = 3.0
-        self.ω = 0.0
-        self.Fd = 0.1
-        self.color = bytearray((8,0,0))
+    def __init__(self, θ=0.0, ω=0.0, Fd=0.0, color=(8,0,0)):
+        self.θ = θ
+        self.ω = ω
+        self.Fd = Fd
+        self.color = color
         self.last_shown = []
     
     def integrate(self, dt, a=0):
@@ -178,7 +178,7 @@ class Ball:
 class RingRamp(Lights):
     def __init__(self, leds, timer=None):
         super().__init__(leds, timer)
-        self.g = -10.0
+        self.g = -60.0
         self.bottom = 7
         self.arc = range(-self.bottom, len(leds)-self.bottom)
         #print("arc", self.arc)  # DEBUG

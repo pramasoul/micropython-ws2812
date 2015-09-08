@@ -165,7 +165,9 @@ def main():
         rr = RingRamp(WS2812(2, 45), timer=Timer(6))
         rr.supertitle = lightshow.supertitle
         #yield from rr.timer_keep_leds_current()
-        rr.balls.append(Ball())
+        rr.balls.append(Ball(ω=20.0, Fd=0.1, color=(8,0,0)))
+        rr.balls.append(Ball(ω=-20.0, Fd=0.1, color=(0,8,0)))
+        rr.balls.append(Ball(θ=3.1, Fd=0.1, color=(0,0,8)))
         yield rr.integrate_continuously()
 
     @coroutine
