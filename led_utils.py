@@ -198,7 +198,6 @@ class RingRamp(Lights):
         for ball in self.balls:
             ball.integrate(dt, a = self.g * math.sin(ball.θ) / self.r)
 
-
     def show_balls(self):
         c = self.circumference
         pix_per_radian = c / (2*π)
@@ -209,7 +208,6 @@ class RingRamp(Lights):
             ball.last_shown = self.display_list_for_angle(ball.θ, ball.color)
             self.change_leds(add=ball.last_shown)
         self.leds.sync()
-
 
     def change_leds(self, subtract=[], add=[]):
         # Input positions in pixel circle space
@@ -226,20 +224,21 @@ class RingRamp(Lights):
             if k < led_len:
                 self.add_color_to(k, color)
 
-
     def display_list_for_angle(self, θ, color, blur=1.0):
         c = self.circumference
         pix_per_radian = c / (2*π)
         return self.display_list_for(θ * pix_per_radian,
                                      color, blur)
 
-
     def display_list_for(self, x, color, blur=1.0):
         # In pixel circle coordinates
         c = self.circumference
-        return list((i%c, bytes(round(v*w) for v in color))
-                     for i, w in self.pixel_weights_for(x, blur))
-
+        rv = []
+        for i, w in self.pixel_weights_for(x, blur):
+            sc = bytes(round(v*w) for v in color)
+            if sc:
+                rv.append((i, sc))
+        return rv
 
     def pixel_weights_for(self, x, blur=1.0):
         # In arbitrary pixel coordinates
