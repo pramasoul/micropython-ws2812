@@ -157,7 +157,7 @@ class Percolator(Lights):
 
 class Ball:
     def __init__(self, θ=0.0, ω=0.0, Fd=0.01, color=(8,0,0)):
-        self.θ = θ
+        self.θ = θ % (2*π)
         self.ω = ω
         self.Fd = Fd
         self.color = color
@@ -188,7 +188,7 @@ class RingRamp(Lights):
                  bottom=0,
                  g=-1.0,
                  blur=None,
-                 ball_check_fun=lambda b:[b]):
+                 ball_check_fun=lambda b, θ, ω :[b]):
         super().__init__(leds)
         self.g = g
         self.bottom = bottom
@@ -205,8 +205,10 @@ class RingRamp(Lights):
     def integrate(self, dt):
         next_balls = []
         for ball in self.balls:
+            θ = ball.θ
+            ω = ball.ω
             ball.integrate(dt, a = self.g * math.sin(ball.θ) / self.r)
-            t = self.ball_check_fun(ball)
+            t = self.ball_check_fun(ball, θ, ω )
             if t:
                 next_balls.extend(t)
         self.balls = next_balls
@@ -293,8 +295,10 @@ class RingRamp(Lights):
         #print("integrating continuously, napping %d" % nap)
         tscale = 1 / 1000000
         then = micros()
+        must_be_less_than = nap*1000 + 10000
         while True:
             dt = elapsed_micros(then)
+            assert dt < must_be_less_than, dt
             then = micros()
             self.integrate(dt * tscale)
             self.show_balls()

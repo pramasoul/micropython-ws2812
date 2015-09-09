@@ -102,16 +102,17 @@ class Lightshow:
         yield self.percolator.perk(delay, color) # Launch this and return
 
 
-    def ball_check(self, ball):
+    def ball_check(self, ball, θ, ω ):
         # Checks a Ball and possibly affects it
         # Return a list of balls to replace it
         # (e.g. just [ball] to make no changes)
         if self.zap_balls:
             ball.zap = True
-        if 3.874631 <= ball.θ < 4.0 and ball.ω >= 0:
+        if θ <= 3.874631 <= ball.θ and ball.ω >= 0:
             # Fell off the top of the "C"
             # FIXME: detect better
             ball.zap = True
+            #print("θ=%f, ω=%f" % (θ, ω ))
             #print("zapped %r" % ball)
             self.loop.call_soon(self.perk_and_roll(100, ball.color))
         return [ball]
