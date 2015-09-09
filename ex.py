@@ -44,6 +44,8 @@ class Lightshow:
 
         self.percolator = Percolator(self.leds)
 
+        self.zap_balls = False
+
 
     @coroutine
     def flash_LED(self, led, dur=1):
@@ -97,6 +99,15 @@ class Lightshow:
             self.percolator.perk_quit = 0
         yield self.percolator.perk(delay, color) # Launch this and return
 
+
+    def ball_check(self, ball):
+        # Checks a Ball and possibly affects it
+        # Return a list of balls to replace it
+        # (e.g. just [ball] to make no changes)
+        #if a <= ball.θ < b: # and ball.ω >= 0:
+        if self.zap_balls:
+            ball.zap = True
+        return [ball]
 
     @coroutine
     def play(self, cli, cmd, rol):
@@ -162,7 +173,12 @@ def main():
         yield from cli.write(b'\x1b[s\x1b[1;40H\x1b[2K')
         yield from cli.write(b'Hey there!')
         yield from cli.write('\x1b[u')
-        rr = RingRamp(WS2812(2, 45), circumference=60, bottom=7, g=-10.0)
+        rr = RingRamp(WS2812(2, 45), \
+                      circumference=60, \
+                      bottom=7, \
+                      g=-10.0,
+                      ball_check_fun = lightshow.ball_check
+        )
         rr.supertitle = lightshow.supertitle
         #yield from rr.timer_keep_leds_current()
         rr.balls.append(Ball(ω=2.1, Fd=0.01, color=(255,0,0)))

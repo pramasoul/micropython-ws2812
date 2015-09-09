@@ -131,8 +131,11 @@ class Percolator(Lights):
     def react_at(self, i):
         stoichiometric = (8,8,8)
         led = self.leds[i]
-        if all(a >= b for a,b in zip(led, stoichiometric)):
-            return stoichiometric
+        if any(a > b for a,b in zip(led, stoichiometric)):
+            return bytes(max(a-b, 0) for a,b in zip(led, stoichiometric))
+        if all(a == b for a,b in zip(led, stoichiometric)):
+            #return stoichiometric
+            return None
         yield
         return None
 
@@ -158,11 +161,12 @@ class Ball:
         self.Fd = Fd
         self.color = color
         self.last_shown = []
+        self.zap = False
     
     def integrate(self, dt, a=0):
         ω = self.ω
         self.ω = ω + (a - self.Fd * ω * abs(ω)) * dt
-        self.θ = (self.θ + self.ω * dt) % (2*π)
+        self.θ = (self.θ + (ω + self.ω) * 0.5 * dt) % (2*π) # Trapezoidal integration
 
     def __repr__(self):
         return "<Ball θ %f, ω %f, color %r>" % \
@@ -182,7 +186,8 @@ class RingRamp(Lights):
                  circumference=None,
                  bottom=0,
                  g=-1.0,
-                 blur=None):
+                 blur=None,
+                 ball_check_fun=lambda b:[b]):
         super().__init__(leds)
         self.g = g
         self.bottom = bottom
@@ -190,26 +195,34 @@ class RingRamp(Lights):
             self.circumference = circumference
         else:
             self.circumference = led(leds)
+        self.pix_per_radian = self.circumference / (2*π)
         self.r = self.circumference / (2*π)
         self.blur = blur
         self.balls = []
+        self.ball_check_fun = ball_check_fun
 
     def integrate(self, dt):
-        # To suit the neopixel rings, we adopt θ = 0 at the bottom,
-        # and clockwise as the direction of increasing θ
+        next_balls = []
         for ball in self.balls:
             ball.integrate(dt, a = self.g * math.sin(ball.θ) / self.r)
+            t = self.ball_check_fun(ball)
+            if t:
+                next_balls.extend(t)
+        self.balls = next_balls
 
     def show_balls(self):
         c = self.circumference
-        pix_per_radian = c / (2*π)
+        survivors = []
         for ball in self.balls:
             self.change_leds(subtract=ball.last_shown)
             #print(ball, end='') # DEBUG
             #print("%2.2d" % i, ball, end='\r')      # DEBUG
-            ball.last_shown = \
-                self.display_list_for_angle(ball.θ, ball.color, self.blur)
-            self.change_leds(add=ball.last_shown)
+            if not ball.zap:
+                survivors.append(ball)
+                ball.last_shown = \
+                    self.display_list_for_angle(ball.θ, ball.color, self.blur)
+                self.change_leds(add=ball.last_shown)
+        self.balls = survivors
         self.leds.sync()
 
     def change_leds(self, subtract=[], add=[]):
@@ -228,14 +241,11 @@ class RingRamp(Lights):
                 self.add_color_to(k, color)
 
     def display_list_for_angle(self, θ, color, blur=1.0):
-        c = self.circumference
-        pix_per_radian = c / (2*π)
-        return self.display_list_for(θ * pix_per_radian,
+        return self.display_list_for(θ * self.pix_per_radian,
                                      color, blur)
 
     def display_list_for(self, x, color, blur=1.0):
         # In pixel circle coordinates
-        c = self.circumference
         rv = []
         for i, w in self.pixel_weights_for(x, blur):
             sc = bytes(round(v*w) for v in color)
