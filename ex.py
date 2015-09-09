@@ -6,8 +6,6 @@ from led_utils import Percolator, RingRamp, Ball
 
 import logging
 
-from ubinascii import hexlify, unhexlify
-
 from async_pyb import new_event_loop, set_event_loop, get_event_loop, \
     EventLoop, GetRunningLoop, Sleep, Future, TimeoutError, \
     coroutine, sleep, wait_for
@@ -18,9 +16,11 @@ import pyb
 from pyb import SPI, Pin, info, millis, elapsed_millis, \
     micros, elapsed_micros, rng, Timer
 
+import random
 import math
 π = math.pi
 
+rand = random.SystemRandom()
 log = logging.getLogger("test")
 
 class Lightshow:
@@ -41,10 +41,16 @@ class Lightshow:
 
         self.pots = [0] * 4
 
-        self.leds = WS2812(spi_bus=config['leds'].get('spi'), \
-                           led_count=config['leds'].get('qty'))
+        self.percolator = \
+                Percolator(WS2812(spi_bus=config['leds'].get('spi'),
+                                  led_count=config['leds'].get('qty')))
+        self.percolator.bingo = self.bingo
 
-        self.percolator = Percolator(self.leds)
+        self.rr = RingRamp(WS2812(2, 45), \
+                           circumference=60, \
+                           bottom=7, \
+                           g=-10.0,
+                           ball_check_fun = self.ball_check)
 
         self.zap_balls = False
 
@@ -106,22 +112,59 @@ class Lightshow:
         # Checks a Ball and possibly affects it
         # Return a list of balls to replace it
         # (e.g. just [ball] to make no changes)
+        rv = []
         if self.zap_balls:
             ball.zap = True
-        if θ <= 3.874631 <= ball.θ and ball.ω >= 0:
-            # Fell off the top of the "C"
-            # FIXME: detect better
+            rv.append(ball)
+#        if θ > π:
+#            θ -= 2 * π
+        elif θ <= -2.408554 <= ball.θ: # and ball.ω >= 0:
+            # crossed off the top of the "C"
             ball.zap = True
+            rv.append(ball)
             #print("θ=%f, ω=%f" % (θ, ω ))
             #print("zapped %r" % ball)
             self.loop.call_soon(self.perk_and_roll(100, ball.color))
-        return [ball]
+        elif θ < 0.0 < ball.θ: # and ball.ω >= 0:
+            #print("rollered %r" % ball)
+            #ball.ω = max(ball.ω , 2.08)
+            ball.zap = True     # Have to zap this one for correct rendering
+            rv.append(ball)
+            color = tuple(iter(ball.color))
+            colors = list(v for v in [(color[0], 0, 0),
+                                      (0, color[1], 0),
+                                      (0, 0, color[2])]
+                          if v)
+            assert colors, colors
+            for c in colors:
+                rv.append(Ball(θ=0.1, ω =rand.uniform(2.1, 4), color=c))
+            #print(rv)
+        else:
+            rv.append(ball)
+        return rv
 
     @coroutine
-    def perk_and_roll(self, speed, color):
-        out_color = yield from self.percolator.perk(100, color)
-        ball = Ball(θ = 2*π * -7/60, color=out_color)
-        self.rr.balls.append(ball)
+    def perk_and_roll(self, speed, color, i=None):
+        out_color = yield from self.percolator.perk(speed, color, i)
+        if out_color is not None:
+            ball = Ball(θ = 2*π * -7/60,
+                        ω = 0.3,
+                        color=out_color)
+            self.rr.balls.append(ball)
+        #else:
+        #    print("perk yielded a None")
+
+    @coroutine
+    def bingo(self):
+        stars = list(range(7, 63, 7))
+        leds = self.percolator.leds
+        rand.shuffle(stars)
+        for i in stars:
+            yield from sleep(200)
+            color = tuple(iter(leds[i]))
+            leds[i].off()
+            i = self.percolator.down(i, rng()&1)
+            yield self.perk_and_roll(100, color, i)
 
     @coroutine
     def play(self, cli, cmd, rol):
@@ -136,11 +179,6 @@ class Lightshow:
     def master(self):
         #self.radio_listener_quit = 0
         self.loop = yield GetRunningLoop(None)
-        self.rr = RingRamp(WS2812(2, 45), \
-                                circumference=60, \
-                                bottom=7, \
-                                g=-10.0,
-                                ball_check_fun = self.ball_check)
         yield self.percolator.keep_leds_current(10)
         while True:
             yield from self.flash_LED(self.act_led)
@@ -195,10 +233,21 @@ def main():
         rr = lightshow.rr
         rr.supertitle = lightshow.supertitle
         #yield from rr.timer_keep_leds_current()
-        rr.balls.append(Ball(ω=2.1, Fd=0.01, color=(255,0,0)))
-        rr.balls.append(Ball(ω=2.08, Fd=0.01, color=(0,255,0)))
+        #rr.balls.append(Ball(ω=2.1, Fd=0.01, color=(64,0,0)))
+        #rr.balls.append(Ball(ω=2.08, Fd=0.01, color=(0,64,0)))
         #rr.balls.append(Ball(θ=3.1, Fd=0.0025, color=(0,0,255)))
-        rr.balls.append(Ball(θ=-0.733, ω=0, Fd=0.01, color=(0,0,255)))
+        #rr.balls.append(Ball(θ=-0.733, ω=0, Fd=0.01, color=(64, 64, 64)))
+
+        #for i in range(8):
+        #    rr.balls.append(Ball(θ=-0.733, ω=rand.uniform(0.0, -0.3), Fd=0.01, color=(8,8,8)))
+        leds = lightshow.percolator.leds
+        for i in range(7, 63, 7):
+            leds[i] = (8,8,8)
+        #leds[28].off()
+        #rr.balls.append(Ball(θ=-0.733, ω=rand.uniform(0.0, -0.3), Fd=0.01, color=(8,8,8)))
+        yield lightshow.percolator.bingo()
+
+        #print(rr.balls)
         yield rr.integrate_continuously()
 
     @coroutine

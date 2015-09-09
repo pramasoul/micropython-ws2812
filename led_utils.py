@@ -131,11 +131,16 @@ class Percolator(Lights):
     @coroutine
     def react_at(self, i):
         stoichiometric = (8,8,8)
+        leds = self.leds
         led = self.leds[i]
         if any(a > b for a,b in zip(led, stoichiometric)):
             return bytes(max(a-b, 0) for a,b in zip(led, stoichiometric))
         if all(a == b for a,b in zip(led, stoichiometric)):
             #return stoichiometric
+            if all(all(a == b for a,b in zip(leds[i], stoichiometric)) \
+                   for i in range(7, 63, 7)):
+                print("bingo!")
+                yield self.bingo()
             return None
         yield
         return None
@@ -154,24 +159,41 @@ class Percolator(Lights):
 
 
 π = math.pi
-
+two_pi = 2.0 * math.pi
 class Ball:
     def __init__(self, θ=0.0, ω=0.0, Fd=0.01, color=(8,0,0)):
-        self.θ = θ % (2*π)
+        self.theta = θ
         self.ω = ω
         self.Fd = Fd
         self.color = color
         self.last_shown = []
         self.zap = False
     
+    @property
+    def θ(self):
+        assert -π <= self.theta < π
+        return self.theta
+
+    @θ.setter
+    def θ(self, v):
+        v %= two_pi
+        if v >= π:
+            v -= two_pi
+        self.theta = v
+
     def integrate(self, dt, a=0):
         ω = self.ω
         self.ω = ω + (a - self.Fd * ω * abs(ω)) * dt
         self.θ = (self.θ + (ω + self.ω) * 0.5 * dt) % (2*π) # Trapezoidal integration
 
     def __repr__(self):
-        return "<Ball θ %f, ω %f, color %r>" % \
-            (self.θ, self.ω, tuple(iter(self.color)))
+        s = "<Ball θ %f, ω %f, color %r" % \
+            (self.θ, self.ω, self.color)
+        try:
+            s += ':' + repr(tuple(iter(self.color)))
+        except TypeError:
+            pass
+        return s + '>'
 
 
 class RingRamp(Lights):
@@ -222,8 +244,13 @@ class RingRamp(Lights):
             #print("%2.2d" % i, ball, end='\r')      # DEBUG
             if not ball.zap:
                 survivors.append(ball)
-                ball.last_shown = \
-                    self.display_list_for_angle(ball.θ, ball.color, self.blur)
+                try:
+                    ball.last_shown = \
+                        self.display_list_for_angle(ball.θ, ball.color, self.blur)
+                except Exception as e:
+                    print(e)
+                    print(ball)
+                    raise
                 self.change_leds(add=ball.last_shown)
         self.balls = survivors
         self.leds.sync()
@@ -251,7 +278,11 @@ class RingRamp(Lights):
         # In pixel circle coordinates
         rv = []
         for i, w in self.pixel_weights_for(x, blur):
-            sc = bytes(round(v*w) for v in color)
+            try:                # DEBUG
+                sc = bytes(round(v*w) for v in color)
+            except TypeError:
+                print(repr(color))
+                raise
             if sc:
                 rv.append((i, sc))
         return rv
@@ -295,10 +326,11 @@ class RingRamp(Lights):
         #print("integrating continuously, napping %d" % nap)
         tscale = 1 / 1000000
         then = micros()
-        must_be_less_than = nap*1000 + 10000
+        should_be_less_than = (nap + 30) * 1000 
         while True:
             dt = elapsed_micros(then)
-            assert dt < must_be_less_than, dt
+            #if dt >= should_be_less_than:
+            #    print("integration dt was", dt)
             then = micros()
             self.integrate(dt * tscale)
             self.show_balls()
