@@ -18,8 +18,10 @@ import pyb
 from pyb import SPI, Pin, info, millis, elapsed_millis, \
     micros, elapsed_micros, rng, Timer
 
-log = logging.getLogger("test")
+import math
+π = math.pi
 
+log = logging.getLogger("test")
 
 class Lightshow:
     def __init__(self, write_fun=None, config={}):
@@ -104,10 +106,21 @@ class Lightshow:
         # Checks a Ball and possibly affects it
         # Return a list of balls to replace it
         # (e.g. just [ball] to make no changes)
-        #if a <= ball.θ < b: # and ball.ω >= 0:
         if self.zap_balls:
             ball.zap = True
+        if 3.874631 <= ball.θ < 4.0 and ball.ω >= 0:
+            # Fell off the top of the "C"
+            # FIXME: detect better
+            ball.zap = True
+            #print("zapped %r" % ball)
+            self.loop.call_soon(self.perk_and_roll(100, ball.color))
         return [ball]
+
+    @coroutine
+    def perk_and_roll(self, speed, color):
+        out_color = yield from self.percolator.perk(100, color)
+        ball = Ball(θ = 2*π * -7/60, color=out_color)
+        self.rr.balls.append(ball)
 
     @coroutine
     def play(self, cli, cmd, rol):
@@ -122,6 +135,11 @@ class Lightshow:
     def master(self):
         #self.radio_listener_quit = 0
         self.loop = yield GetRunningLoop(None)
+        self.rr = RingRamp(WS2812(2, 45), \
+                                circumference=60, \
+                                bottom=7, \
+                                g=-10.0,
+                                ball_check_fun = self.ball_check)
         yield self.percolator.keep_leds_current(10)
         while True:
             yield from self.flash_LED(self.act_led)
@@ -173,12 +191,7 @@ def main():
         yield from cli.write(b'\x1b[s\x1b[1;40H\x1b[2K')
         yield from cli.write(b'Hey there!')
         yield from cli.write('\x1b[u')
-        rr = RingRamp(WS2812(2, 45), \
-                      circumference=60, \
-                      bottom=7, \
-                      g=-10.0,
-                      ball_check_fun = lightshow.ball_check
-        )
+        rr = lightshow.rr
         rr.supertitle = lightshow.supertitle
         #yield from rr.timer_keep_leds_current()
         rr.balls.append(Ball(ω=2.1, Fd=0.01, color=(255,0,0)))

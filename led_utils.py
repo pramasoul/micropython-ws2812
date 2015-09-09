@@ -64,6 +64,7 @@ class Percolator(Lights):
         self.top_i = len(leds) - 1
         self.bottom_i = 0
         self.random = random.SystemRandom()
+        self.perk_quit = False
 
     def down_left(self, i):
         # return the index into leds that is down-left of i
@@ -99,7 +100,7 @@ class Percolator(Lights):
 
     @coroutine
     def perk(self, delay, color, start=None):
-        #prev_i = self.top_i
+        #print("perk(%d, %r, %r)" % (delay, color, start))
         stoichiometric = (8,8,8)
         i = None
         while True:
@@ -155,7 +156,7 @@ class Percolator(Lights):
 π = math.pi
 
 class Ball:
-    def __init__(self, θ=0.0, ω=0.0, Fd=0.0, color=(8,0,0)):
+    def __init__(self, θ=0.0, ω=0.0, Fd=0.01, color=(8,0,0)):
         self.θ = θ
         self.ω = ω
         self.Fd = Fd
@@ -277,11 +278,14 @@ class RingRamp(Lights):
             erfs.append((i, e))
             i += 1
         rv = []
-        prior_e = -1.0
-        for i, e in erfs:
-            rv.append((i-1, 0.5 * (e - prior_e)))
-            prior_e = e
-        rv.append((i, 0.5 * (1.0 - e)))
+        if erfs:
+            prior_e = -1.0
+            for i, e in erfs:
+                rv.append((i-1, 0.5 * (e - prior_e)))
+                prior_e = e
+            rv.append((i, 0.5 * (1.0 - e)))
+        else:                   # Only one pixel with significant weight
+            return [(nearest_i, 1)]
         return rv
 
     @coroutine
