@@ -49,7 +49,7 @@ class Lightshow:
         self.rr = RingRamp(WS2812(2, 45), \
                            circumference=60, \
                            bottom=7, \
-                           g=-10.0,
+                           g=-20.0,
                            ball_check_fun = self.ball_check)
 
         self.zap_balls = False
@@ -118,6 +118,7 @@ class Lightshow:
             rv.append(ball)
 #        if θ > π:
 #            θ -= 2 * π
+
         elif θ <= -2.408554 <= ball.θ: # and ball.ω >= 0:
             # crossed off the top of the "C"
             ball.zap = True
@@ -125,19 +126,43 @@ class Lightshow:
             #print("θ=%f, ω=%f" % (θ, ω ))
             #print("zapped %r" % ball)
             self.loop.call_soon(self.perk_and_roll(100, ball.color))
-        elif θ < 0.0 < ball.θ: # and ball.ω >= 0:
+
+        #elif θ < 0.0 < ball.θ: # and ball.ω >= 0:
+        #elif θ < 0.0 < ball.θ or θ > 0.0 > ball.θ : # and ball.ω >= 0:
+        elif θ < 0.0 < ball.θ or \
+                max(abs(θ), abs(ball.θ)) < 1.5 and θ > 0.0 > ball.θ : # and ball.ω >= 0:
+            # Crossed the centerline of the drive rollers
             #print("rollered %r" % ball)
             #ball.ω = max(ball.ω , 2.08)
-            ball.zap = True     # Have to zap this one for correct rendering
+            # Can't omit this ball, have to zap it for correct rendering
+            ball.zap = True
             rv.append(ball)
-            color = tuple(iter(ball.color))
-            colors = list(v for v in [(color[0], 0, 0),
-                                      (0, color[1], 0),
-                                      (0, 0, color[2])]
-                          if v)
-            assert colors, colors
+
+            # Grind this ball up into primary colors
+            color = list(iter(ball.color))
+            #Below does not grind up fused primaries of same color:
+            #colors = list(v for v in [(color[0], 0, 0),
+            #                          (0, color[1], 0),
+            #                          (0, 0, color[2])]
+            #              if sum(v))
+
+            t = stoichiometric = self.percolator.stoichiometric
+            stoi_primaries = [(t[0], 0, 0),
+                             (0, t[1], 0),
+                             (0, 0, t[2])]
+            colors = []
+            for i in range(3):
+                while color[i] >= stoichiometric[i]:
+                    colors.append(stoi_primaries[i])
+                    color[i] -= stoichiometric[i]
+                if color[i]:
+                    t = [0, 0, 0]
+                    t[i] = color[i]
+                    colors.append(tuple(t))
+
+            assert colors, colors # At least one
             for c in colors:
-                rv.append(Ball(θ=0.1, ω =rand.uniform(2.1, 4), color=c))
+                rv.append(Ball(θ=0.1, ω =rand.gauss(3.1, 0.5), color=c))
             #print(rv)
         else:
             rv.append(ball)
@@ -292,7 +317,8 @@ def main():
     cli.command_dispatch['exec'] = exec_cmd
     cli.command_dispatch['eval'] = eval_cmd
 
-    loop = new_event_loop()
+    #loop = new_event_loop(64)   # Pre-allocate space for 64 delayed send/call
+    loop = new_event_loop()   # Pre-allocate space for 64 delayed send/call
     set_event_loop(loop)
     loop.run_until_complete(run(cli, lightshow, config))
 
