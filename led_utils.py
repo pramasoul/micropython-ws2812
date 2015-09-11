@@ -65,7 +65,7 @@ class Percolator(Lights):
         self.bottom_i = 0
         self.random = random.SystemRandom()
         self.perk_quit = False
-        self.stoichiometric = (8,8,8)
+        self.stoichiometric = (31,31,31)
 
     def down_left(self, i):
         # return the index into leds that is down-left of i

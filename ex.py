@@ -49,7 +49,7 @@ class Lightshow:
         self.rr = RingRamp(WS2812(2, 45), \
                            circumference=60, \
                            bottom=7, \
-                           g=-20.0,
+                           g=-40.0,
                            ball_check_fun = self.ball_check)
 
         self.zap_balls = False
@@ -130,7 +130,7 @@ class Lightshow:
         #elif θ < 0.0 < ball.θ: # and ball.ω >= 0:
         #elif θ < 0.0 < ball.θ or θ > 0.0 > ball.θ : # and ball.ω >= 0:
         elif θ < 0.0 < ball.θ or \
-                max(abs(θ), abs(ball.θ)) < 1.5 and θ > 0.0 > ball.θ : # and ball.ω >= 0:
+                θ > 0.0 > ball.θ and max(abs(θ), abs(ball.θ)) < 1.5: # and ball.ω >= 0:
             # Crossed the centerline of the drive rollers
             #print("rollered %r" % ball)
             #ball.ω = max(ball.ω , 2.08)
@@ -162,7 +162,7 @@ class Lightshow:
 
             assert colors, colors # At least one
             for c in colors:
-                rv.append(Ball(θ=0.1, ω =rand.gauss(3.1, 0.5), color=c))
+                rv.append(Ball(θ=0.1, ω =rand.gauss(4.5, 0.2), color=c))
             #print(rv)
         else:
             rv.append(ball)
@@ -267,7 +267,7 @@ def main():
         #    rr.balls.append(Ball(θ=-0.733, ω=rand.uniform(0.0, -0.3), Fd=0.01, color=(8,8,8)))
         leds = lightshow.percolator.leds
         for i in range(7, 63, 7):
-            leds[i] = (8,8,8)
+            leds[i] = lightshow.percolator.stoichiometric
         #leds[28].off()
         #rr.balls.append(Ball(θ=-0.733, ω=rand.uniform(0.0, -0.3), Fd=0.01, color=(8,8,8)))
         yield lightshow.percolator.bingo()
