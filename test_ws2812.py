@@ -9,7 +9,7 @@ import math
 
 import random
 
-from ws2812 import WS2812
+from ws2812 import WS2812, Pixel
 
 #log = logging.getLogger("test_ws2812")
 
@@ -240,7 +240,7 @@ class WS2812TestCase(unittest.TestCase):
                 leds.rotate_places(-j)
                 
 
-    #@unittest.skip("FIXME: ")
+    #@unittest.skip("x")
     def testRotate(self):
         # A chain can be rotated
         for n in (1, 2, 7, 16, 33, 70, 190, 244, 400):
@@ -249,24 +249,62 @@ class WS2812TestCase(unittest.TestCase):
             gc.collect()
             leds = WS2812(spi_bus=1, led_count=n, prealloc=False)
             leds.fill_buf(tg(n, 1))
-            t = leds.a[:]
+            t = leds.a[:]       # Look inside and save the state
             for j in range(0, n, (n//7)+1):
                 #gc.collect()
                 #self.assertEqual(leds.a, t)
-                for i in range(len(leds.a)):
+                alen = len(leds.a) - 1 # ignoring the pad
+                for i in range(alen):
                     self.assertEqual(leds.a[i], t[i])
                 for cnt in range(j):
                     leds.cw()
+                for i in range(alen):
+                    self.assertEqual(leds.a[i], t[(i+3*j)%alen])
                 for cnt in range(j):
                     leds.ccw()
 
                 
+    def testSlicedRval(self):
+        # A chain slice can be read
+        leds = WS2812(spi_bus=1, led_count=9, prealloc=False)
+        self.assertTrue(all(isinstance(v, Pixel) for v in leds[:3]))
+        self.assertTrue(all(isinstance(v, Pixel) for v in leds[2:5]))
+        self.assertTrue(all(isinstance(v, Pixel) for v in leds[7:11]))
+        for i in range(len(leds)):
+            leds[i] = (i, 2*i, 3*i)
+        for k, led in enumerate(leds[3:6]):
+            i = k + 3
+            self.assertEqual(tuple(led), (i, 2*i, 3*i))
+        self.assertEqual(list(tuple(led) for led in leds[-2:]), \
+                         [(i, 2*i, 3*i) for i in (7,8)])
+        self.assertEqual(list(tuple(led) for led in leds[:]), \
+                         [(i, 2*i, 3*i) for i in range(len(leds))])
 
+        # Negative index can be used
+        i = len(leds) - 1
+        self.assertEqual(tuple(leds[-1]), (i, 2*i, 3*i))
+        i = len(leds) - 5
+        self.assertEqual(tuple(leds[-5]), (i, 2*i, 3*i))
+        i = 0
+        self.assertEqual(tuple(leds[-len(leds)]), (i, 2*i, 3*i))
+
+    
+
+    #@unittest.skip("FIXME")
+    def testSlicedLval(self):
+        # A chain slice can be written
+        leds = WS2812(spi_bus=1, led_count=9, prealloc=False)
+        for i in range(len(leds)):
+            leds[i] = (i, 2*i, 3*i)
+        leds[0:3] = leds[3:6]
+        for k in range(3):
+            i = k + 3
+            self.assertEqual(tuple(leds[k]), (i, 2*i, 3*i))            
 
 
 def main():
-#    unittest.main()
-#    return
+    unittest.main()
+    return
     # Burn-in test:
     while True:
         try:

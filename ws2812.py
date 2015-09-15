@@ -93,41 +93,105 @@ class WS2812:
 
     def get_led_pixel(self, index):
         # The asm function is unguarded as to index, so enforce here:
-        if index >= self.led_count or index < -self.led_count:
-            raise IndexError("tried to get pixel", index)
+        # WIP: Figure out slicing
         pixels = self.pixels
-        pix = pixels[index]
-        if pix is None:
-            pix = pixels[index] = Pixel(self.buf, index*3)
-        return pix
+        length = len(self)
+        
+        if isinstance(index, int):
+            if not -length <= index < length:
+                raise IndexError("tried to get pixel", index)
+            pix = pixels[index%length]
+            if pix is None:
+                pix = pixels[index] = Pixel(self.buf, index*3)
+            return pix
+
+        # assume it's a slice
+        try:
+            start, stop, step = index.start, index.stop, index.step
+        except AttributeError:
+            # e.g. 'slice(3, 6, None)'
+            start, stop, step = eval(str(index)[5:])
+        #print(start, stop, step)
+        #print(list(range(length)[start:stop]))
+        # Could raise NotImplemented if step is not None
+        touch = range(length)[start:stop]
+
+        if isinstance(touch, int):
+            assert not isinstance(touch, int), "Hey, touch is %r" % touch # DEBUG
+            touch = [touch]
+
+        if len(touch) == 0:
+            raise IndexError("tried to get pixel", index)
+
+        # Make sure all the positions we're hitting are cached
+        for i in touch:
+            if pixels[i] is None:
+                pixels[i] = Pixel(self.buf, 3*i)
+
+        return pixels[index]
+
 
     __getitem__ = get_led_pixel
 
+
+    # A helper method
     set_led_buf = bytearray(3)
+    def _addressable(self, v):
+        if isinstance(v, bytes):
+            v = addressof(v)
+        elif isinstance(v, bytearray):
+            pass
+        else:
+            #vb = bytearray(iter(vb))
+            vb = self.set_led_buf # Reuse to minimise heap impact
+            #print("vb starts as", vb, end=' ')
+            try:
+                for i in range(3):
+                    vb[i] = v[i]
+                #print("vb is", vb, end=' ')
+            except:
+                it = iter(v)
+                vb[0] = next(it)
+                vb[1] = next(it)
+                vb[2] = next(it)
+            v = vb
+        return v
+
+
     def set_led(self, index, value):
         # set LED buffer at index to value
         # value is bytearray((r,g,b)) or bytes((r,g,b))
         # The asm function is unguarded as to index, so enforce here
-        if index >= self.led_count or index < 0:
-            raise IndexError("try to set LED", index, "out of", self.led_count)
-        if isinstance(value, bytes):
-            value = addressof(value)
-        elif isinstance(value, bytearray):
-            pass
-        else:
-            vb = self.set_led_buf
-            try:
-                for i in range(3):
-                    vb[i] = value[i]
-            except:
-                it = iter(value)
-                vb[0] = next(it)
-                vb[1] = next(it)
-                vb[2] = next(it)
-            value = vb
-        return self.a_set_rgb_values(self.buf, index, value)
+
+        length = len(self)
+
+        if isinstance(index, int):
+            if not -length <= index < length:
+                raise IndexError("tried to set LED", index, "out of", length)
+            v = self._addressable(value)
+            self.a_set_rgb_values(self.buf, index, v)
+            return
+
+        #else
+        # assume it's a slice
+        try:
+            start, stop, step = index.start, index.stop, index.step
+        except AttributeError:
+            # e.g. 'slice(3, 6, None)'
+            start, stop, step = eval(str(index)[5:])
+        #print(start, stop, step)
+        #print(list(range(length)[start:stop]))
+        dests = range(length)[start:stop]
+
+        for i, v in zip(dests, value):
+            #print("i", i, "v", v, end=' ')
+            v = self._addressable(v)
+            #print("now v is", v)
+            self.a_set_rgb_values(self.buf, i, v)
+
 
     __setitem__ = set_led
+
 
     @staticmethod
     @micropython.asm_thumb
@@ -424,8 +488,17 @@ class Pixel:
             (self.i//3, self.r, self.g, self.b, addressof(self.a))
 
 
+def _get(a, i):
+    rv = __get(a, i)
+    #print("<%d is %r>" % (i, rv))        # DEBUG
+    return rv
+
+def _set(a, i, v):
+    #print("<%d becoming %r>" % (i, v))        # DEBUG
+    return __set(a, i, v)
+
 @micropython.asm_thumb
-def _get(r0, r1):
+def __get(r0, r1):
     # Registers:
     # r0: base of array 'self.a' of 32-bit words
     # r1: index into array
@@ -468,7 +541,7 @@ def _get(r0, r1):
 
 
 @micropython.asm_thumb
-def _set(r0, r1, r2):
+def __set(r0, r1, r2):
     # Register arguments:
     # r0: base of encoded pixel buffer (12 bytes / pixel)
     # r1: pixel offset e.g. 7 for red value of 3rd pixel in chain
