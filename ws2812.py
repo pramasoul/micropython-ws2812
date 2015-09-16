@@ -51,9 +51,8 @@ class WS2812:
         self.buf = bytearray_at(addressof(self.a), 3*4*led_count + 1) # extra byte
         self.buf[-1] = 0        # make it \x00 to idle SPI low after transfer
 
-        # Prepare an empty cache by index of Pixel objects
+        # Prepare a cache by index of Pixel objects
         self.pixels = pixels = [None] * led_count
-
         if prealloc:
             for i in range(led_count):
                 pixels[i] = Pixel(self.buf, 3*i)
@@ -438,10 +437,11 @@ class WS2812:
 
 
 class Pixel:
+    cmap = (1,0,2)
+
     def __init__(self, a, i):
         self.a = a
         self.i = i
-        self.cmap = (1,0,2)
 
     @property
     def r(self):
