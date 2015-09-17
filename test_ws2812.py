@@ -299,7 +299,13 @@ class WS2812TestCase(unittest.TestCase):
         leds[0:3] = leds[3:6]
         for k in range(3):
             i = k + 3
-            self.assertEqual(tuple(leds[k]), (i, 2*i, 3*i))            
+            self.assertEqual(tuple(leds[k]), (i, 2*i, 3*i))
+        for i in range(len(leds)):
+            leds[i] = (i, 2*i, 3*i)
+        leds[-3:] = leds[:3]
+        for i in range(3):
+            k = i + 6
+            self.assertEqual(tuple(leds[k]), (i, 2*i, 3*i))
 
 
 def main():
