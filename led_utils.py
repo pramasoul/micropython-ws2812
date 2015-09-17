@@ -5,6 +5,64 @@ from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
 from pyb import Timer, rng, micros, elapsed_micros
 from uctypes import addressof
 
+
+def display_list_for(x, color, blur=1.0):
+    # In arbitrary pixel coordinates
+    rv = []
+    for i, w in gaussian_blur_weights(x, blur):
+        try:                # DEBUG
+            sc = bytes(round(v*w) for v in color)
+        except TypeError:
+            print(repr(color))
+            raise
+        if sc:
+            rv.append((i, sc))
+    return rv
+
+
+def gaussian_blur_weights(x, blur=1.0):
+    # In arbitrary pixel coordinates in a 1-D space
+    # Provides an iterable of (i, weight)'s for a point source at float x
+    # where the positions i are integers, sum(weights) is 1.0, and 
+    # min(weight) about 1/255
+    nearest_i = round(x)
+    if not blur:
+        return [(nearest_i, 1)]
+    sharp = 1.0 / blur
+    lattice_offset = nearest_i - x # Add to x to get to nearest lattice point
+                    # Subtract from lattice point to get to x + some integer
+    erfs = []
+    i = nearest_i
+    while True:
+        e = math.erf(sharp * (i - nearest_i - 0.5 + lattice_offset))
+        if e < -0.992:
+            break
+        erfs.insert(0, (i, e))
+        i -= 1
+    i = nearest_i + 1
+    while True:
+        e = math.erf(sharp * (i - nearest_i - 0.5 + lattice_offset))
+        if e > 0.992:
+            break
+        erfs.append((i, e))
+        i += 1
+    rv = []
+    if erfs:
+        prior_e = -1.0
+        for i, e in erfs:
+            rv.append((i-1, 0.5 * (e - prior_e)))
+            prior_e = e
+        rv.append((i, 0.5 * (1.0 - e)))
+    else:                   # Only one pixel with significant weight
+        return [(nearest_i, 1)]
+    return rv
+
+
+class WSlice:
+    def __init__(self, ws, start=1, stop=-1):
+        self.ws = ws
+
+
 class Lights:
     def __init__(self, leds, timer=None):
         self.leds = leds
@@ -210,7 +268,33 @@ class Ball:
         return s + '>'
 
 
+class Ring:
+    def __init__(self, leds, start, length):
+        self.leds = leds
+        self.start = start
+        self.length = length
+
+    def cw(self):
+        self.leds.cw(start=self.start, stop=self.start+self.length)
+
+    def ccw(self):
+        self.leds.ccw(start=self.start, stop=self.start+self.length)
+
+    def clear(self):
+        for i in range(self.start, self.start+self.length):
+            self.leds[i].off()
+
+    def one(self, rgb=(1,1,1), pos=0):
+        self.leds[self.start + pos % self.length] = bytes(rgb)
+
+    def __repr__(self):
+        return("<ring start %d len %d leds %r>" % \
+               (self.start, self.length, self.leds))
+
+
 class RingRamp(Lights):
+    # A ring-shaped ramp for balls in gravity
+    # The balls ghost through each other
     # Coordinate systems:
     # 1) angle in radians
     # 2) pixels clockwise from the bottom pixel
@@ -298,55 +382,7 @@ class RingRamp(Lights):
                 self.add_color_to(k, color)
 
     def display_list_for_angle(self, θ, color, blur=1.0):
-        return self.display_list_for(θ * self.pix_per_radian,
-                                     color, blur)
-
-    def display_list_for(self, x, color, blur=1.0):
-        # In pixel circle coordinates
-        rv = []
-        for i, w in self.pixel_weights_for(x, blur):
-            try:                # DEBUG
-                sc = bytes(round(v*w) for v in color)
-            except TypeError:
-                print(repr(color))
-                raise
-            if sc:
-                rv.append((i, sc))
-        return rv
-
-    def pixel_weights_for(self, x, blur=1.0):
-        # In arbitrary pixel coordinates
-        nearest_i = round(x)
-        if not blur:
-            return [(nearest_i, 1)]
-        sharp = 1.0 / blur
-        lattice_offset = nearest_i - x # Add to x to get to nearest lattice point
-                        # Subtract from lattice point to get to x + some integer
-        erfs = []
-        i = nearest_i
-        while True:
-            e = math.erf(sharp * (i - nearest_i - 0.5 + lattice_offset))
-            if e < -0.992:
-                break
-            erfs.insert(0, (i, e))
-            i -= 1
-        i = nearest_i + 1
-        while True:
-            e = math.erf(sharp * (i - nearest_i - 0.5 + lattice_offset))
-            if e > 0.992:
-                break
-            erfs.append((i, e))
-            i += 1
-        rv = []
-        if erfs:
-            prior_e = -1.0
-            for i, e in erfs:
-                rv.append((i-1, 0.5 * (e - prior_e)))
-                prior_e = e
-            rv.append((i, 0.5 * (1.0 - e)))
-        else:                   # Only one pixel with significant weight
-            return [(nearest_i, 1)]
-        return rv
+        return display_list_for(θ * self.pix_per_radian, color, blur)
 
     @coroutine
     def integrate_continuously(self, nap=10):
