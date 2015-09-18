@@ -130,6 +130,7 @@ class WS2812TestCase(unittest.TestCase):
         self.assertEqual('|'.join('%x' % v for v in leds.buf),
                          '13|13|31|13|33|33|33|33|13|33|11|13|0')
 
+
     def testMemoryUsedInOperations(self):
         leds = WS2812(spi_bus=1, led_count=64)
         foo = b'foo'
@@ -288,6 +289,12 @@ class WS2812TestCase(unittest.TestCase):
         i = 0
         self.assertEqual(tuple(leds[-len(leds)]), (i, 2*i, 3*i))
 
+        # Negative index doesn't blow up unallocated
+        leds = WS2812(spi_bus=1, led_count=66, prealloc=False)
+        sum_neg = sum(sum([leds[i].r, leds[i].g, leds[i].b]) for i in range(-1, -len(leds), -1))
+        sum_pos = sum(sum([leds[i].r, leds[i].g, leds[i].b]) for i in range(len(leds)))
+        self.assertEqual(sum_neg, 0)
+        self.assertEqual(sum_pos, 0)
     
 
     #@unittest.skip("FIXME")

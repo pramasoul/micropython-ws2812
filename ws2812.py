@@ -99,7 +99,8 @@ class WS2812:
         if isinstance(index, int):
             if not -length <= index < length:
                 raise IndexError("tried to get pixel", index)
-            pix = pixels[index%length]
+            index %= length
+            pix = pixels[index]
             if pix is None:
                 pix = pixels[index] = Pixel(self.buf, index*3)
             return pix
