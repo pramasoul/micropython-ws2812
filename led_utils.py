@@ -4,7 +4,7 @@ import math
 from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
 from pyb import Timer, rng, micros, elapsed_micros
 from uctypes import addressof
-
+from ws2812 import SubscriptableForPixel
 
 def display_list_for(x, color, blur=1.0):
     # In arbitrary pixel coordinates
@@ -58,9 +58,120 @@ def gaussian_blur_weights(x, blur=1.0):
     return rv
 
 
-class WSlice:
-    def __init__(self, ws, start=1, stop=-1):
+class WSlice(SubscriptableForPixel):
+    # This class encapsulates a WS2812 and provides new capabilities
+    # It intrudes into and depends on the internals of the pramasoul
+    # version of WS2812
+    def __init__(self, ws, start=0, end=None):
         self.ws = ws
+        self.start = start
+        if end is None:
+            self.end = len(ws)
+        else:
+            self.end = end
+        self.pixels = ws[start:end]
+        self.sync = ws.sync
+        self.mem = ws.mem
+        self.fill_buf = ws.fill_buf
+
+    def __len__(self):
+        return len(self.pixels)
+
+    # Too fancy, creates memory stress:
+    """
+    def rotate_places(self, places):
+        length = len(self)
+        if places % length == 0: # Optimization, it works without
+            return
+        unqueued = set(range(length))
+        bb = self.ws.buf
+        queue = []
+        #print(list(tuple(pix) for pix in self))
+        while unqueued or queue:
+            if queue:
+                dst, contents = queue.pop()
+            else:
+                src = unqueued.pop()
+                #print(src, end='')
+                dst = (src + places) % length
+                contents = bb[12*src:12*(src+1)]
+            if dst in unqueued:
+                queue.insert(0, ((dst + places) % length, \
+                                 bytes(bb[12*dst:12*(dst+1)])))
+                unqueued.remove(dst)
+            #print('->', dst, end=' ')
+            bb[12*dst:12*(dst+1)] = contents
+            #print(list(tuple(pix) for pix in self))
+    """
+
+    
+    def cw(self, start=0, stop=None):
+        # Rotates [start, stop) one pixel clockwise
+        # i.e. toward the lower index
+        length = len(self)
+        a = self.ws.a
+        if stop is None or stop > length:
+            stop = length
+        tmp0 = a[3*start]
+        tmp1 = a[3*start + 1]
+        tmp2 = a[3*start + 2]
+        self.shift(amount=-1, start=start, stop=stop)
+        a[3*(stop-1)] = tmp0
+        a[3*(stop-1) + 1] = tmp1
+        a[3*(stop-1) + 2] = tmp2
+
+    def ccw(self, start=0, stop=None):
+        # Rotates [start, stop) one pixel counter-clockwise
+        # i.e. toward the higher index
+        length = len(self)
+        a = self.ws.a
+        if stop is None or stop > length:
+            stop = length
+        tmp0 = a[3*(stop-1)]
+        tmp1 = a[3*(stop-1) + 1]
+        tmp2 = a[3*(stop-1) + 2]
+        self.shift(amount=1, start=start, stop=stop)
+        a[3*start] = tmp0
+        a[3*start + 1] = tmp1
+        a[3*start + 2] = tmp2
+
+    def shift(self, amount=1, start=0, stop=None):
+        # Shifts leds[start:end] by amount to the right
+        # amount can be negative, making it a left shift
+        length = len(self)
+        if stop is None or stop > length:
+            stop = length
+        if amount < 0:
+            src = start - amount
+            dest = start
+            n = max(stop - start + amount, 0)
+        else:
+            src = start
+            dest = start + amount
+            n = max(stop - start - amount, 0)
+        self._wordsmove(3*dest, 3*src, 3*n)
+
+    # styled after memmove(dest, src, n), but moving words instead of bytes
+    # FIXME: rewrite in assembly
+    def _wordsmove(self, dest, src, n):
+        #print("_wordsmove(%d, %d, %d)" % (dest, src, n), end = ' ')
+        assert n >= 0
+        a = self.ws.a
+        delta = dest - src
+        if src < dest:
+            first = src + n - 1
+            last = src - 1
+            step = -1
+        else:
+            first = src
+            last = src + n
+            step = 1
+        #print("range(%d, %d, %d) delta %d" % (first, last, step, delta))
+        for i in range(first, last, step): # The index of the one moving
+            #print(" %d->%d" % (i, i+delta), end='')
+            a[i+delta] = a[i]
+
+
 
 
 class Lights:
