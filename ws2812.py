@@ -64,7 +64,7 @@ class SubscriptableForPixel:
             want = [want]
 
         if len(want) == 0:
-            raise IndexError("tried to get pixel", index)
+            raise IndexError("tried to get pixel %r" % index)
 
         if mem == CACHE:
             # Make sure all the positions we're hitting are cached

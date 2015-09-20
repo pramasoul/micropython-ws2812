@@ -3,7 +3,7 @@ import random
 import math
 from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
 from pyb import Timer, rng, micros, elapsed_micros
-from uctypes import addressof
+from uctypes import addressof, bytearray_at
 from ws2812 import SubscriptableForPixel
 
 def display_list_for(x, color, blur=1.0):
@@ -64,6 +64,9 @@ class WSlice(SubscriptableForPixel):
     # version of WS2812
     def __init__(self, ws, start=0, end=None):
         self.ws = ws
+        if  start < -len(ws) or start >= len(ws):
+            raise IndexError("start %d is outside underlying ws of length %d" % (start, len(ws)))
+        start %= len(ws)
         self.start = start
         if end is None:
             self.end = len(ws)
@@ -72,7 +75,7 @@ class WSlice(SubscriptableForPixel):
         self.pixels = ws[start:end]
         self.sync = ws.sync
         self.mem = ws.mem
-        self.fill_buf = ws.fill_buf
+        self.buf = bytearray_at(addressof(ws.buf) + 3*4*start, 12*(end - start))
 
     def __len__(self):
         return len(self.pixels)
@@ -112,13 +115,15 @@ class WSlice(SubscriptableForPixel):
         a = self.ws.a
         if stop is None or stop > length:
             stop = length
-        tmp0 = a[3*start]
-        tmp1 = a[3*start + 1]
-        tmp2 = a[3*start + 2]
+        triplerotstart = 3*(start + self.start)
+        tmp0 = a[triplerotstart]
+        tmp1 = a[triplerotstart + 1]
+        tmp2 = a[triplerotstart + 2]
         self.shift(amount=-1, start=start, stop=stop)
-        a[3*(stop-1)] = tmp0
-        a[3*(stop-1) + 1] = tmp1
-        a[3*(stop-1) + 2] = tmp2
+        triple_rotstop_less_1 = 3*(stop + self.start - 1)
+        a[triple_rotstop_less_1] = tmp0
+        a[triple_rotstop_less_1 + 1] = tmp1
+        a[triple_rotstop_less_1 + 2] = tmp2
 
     def ccw(self, start=0, stop=None):
         # Rotates [start, stop) one pixel counter-clockwise
@@ -127,13 +132,15 @@ class WSlice(SubscriptableForPixel):
         a = self.ws.a
         if stop is None or stop > length:
             stop = length
-        tmp0 = a[3*(stop-1)]
-        tmp1 = a[3*(stop-1) + 1]
-        tmp2 = a[3*(stop-1) + 2]
+        triple_rotstop_less_1 = 3*(stop + self.start - 1)
+        tmp0 = a[triple_rotstop_less_1]
+        tmp1 = a[triple_rotstop_less_1 + 1]
+        tmp2 = a[triple_rotstop_less_1 + 2]
         self.shift(amount=1, start=start, stop=stop)
-        a[3*start] = tmp0
-        a[3*start + 1] = tmp1
-        a[3*start + 2] = tmp2
+        triplerotstart = 3*(start + self.start)
+        a[triplerotstart] = tmp0
+        a[triplerotstart + 1] = tmp1
+        a[triplerotstart + 2] = tmp2
 
     def shift(self, amount=1, start=0, stop=None):
         # Shifts leds[start:end] by amount to the right
@@ -379,11 +386,15 @@ class Ball:
         return s + '>'
 
 
+# FIXME: does this have a purpose?
 class Ring:
-    def __init__(self, leds, start, length):
+    def __init__(self, leds, start=0, length=None):
         self.leds = leds
         self.start = start
-        self.length = length
+        if length is None:
+            self.length = len(leds)
+        else:
+            self.length = length
 
     def cw(self):
         self.leds.cw(start=self.start, stop=self.start+self.length)
