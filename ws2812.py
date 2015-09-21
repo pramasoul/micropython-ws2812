@@ -180,14 +180,10 @@ class WS2812(SubscriptableForPixel):
         # 1 cache
         # 2 create Pixel each time
 
-        # prepare SPI data buffer (4 bytes for each color for each pixel)
-
-        # Accessable as word-per-color via the self.a array of 32-bit longs:
-        self.a = array('L', range(3*led_count + 1)) # extra word of zero
-
-        # The byte array buffer that gets sent out the SPI is the one underlying self.a:
-        self.buf = bytearray_at(addressof(self.a), 3*4*led_count + 1) # extra byte
-        self.buf[-1] = 0        # make it \x00 to idle SPI low after transfer
+        # prepare SPI data buffer (4 bytes for each color for each pixel,
+        # with an additional zero byte at the end to make sure the data line
+        # comes to rest low)
+        self.buf = bytearray(4*3*led_count + 1)
 
         if mem <= CACHE:
             # Prepare a cache by index of Pixel objects
@@ -241,7 +237,7 @@ class WS2812(SubscriptableForPixel):
         if to is None:
             self.spi.send(self.buf)
         else:
-            short_buf = bytearray_at(addressof(self.a), 3*4*to + 1) # extra byte
+            short_buf = bytearray_at(addressof(self.buf), 3*4*to + 1) # extra byte
             t = short_buf[-1]
             short_buf[-1] = 0
             self.spi.send(short_buf)
@@ -266,9 +262,9 @@ class WS2812(SubscriptableForPixel):
         end = self.update_buf(data)
 
         # turn off the rest of the LEDs
-        a = self.a
-        for i in range(end * 3, self.led_count * 3):
-            a[i] = 0x11111111   # off
+        b = self.buf
+        for i in range(4*3*end, 4*3*self.led_count):
+            b[i] = 0x11   # off
 
 
 class Pixel:
@@ -334,7 +330,8 @@ def _set(a, i, v):
 @micropython.asm_thumb
 def __get(r0, r1):
     # Registers:
-    # r0: base of array 'self.a' of 32-bit words
+    # r0: base of array of 32-bit words, each encoding a color,
+    #     each triple (G,R,B) encoding a pixel
     # r1: index into array
     # r7: 4 * index (byte offset)
     # r6: address of word in array
