@@ -86,8 +86,8 @@ class VariousTestCase(unittest.TestCase):
 
 
 class WSliceTestCase(unittest.TestCase):
-    names = """Attrs PixelAccess Rotate RotateInset""".split()
-    #names = """Attrs RotateInset""".split()
+    names = """Attrs PixelAccess Rotate RotateInset RotatePart""".split()
+    names = """Attrs RotatePart""".split()
 
     def setUp(self):
         #logging.basicConfig(level=logging.INFO)
@@ -232,8 +232,6 @@ class WSliceTestCase(unittest.TestCase):
         leds.ccw()
         self.assertEqual([tuple(led) for led in leds], [(0,1,2), (3,4,5), (6,7,8)])
         self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,5)))
-
-
         ws = WS2812(spi_bus=1, led_count=90, mem=mem)
         for n in (1, 2, 7, 16, 33, 70):#, 190, 244, 400):
             leds = ref = None
@@ -259,7 +257,40 @@ class WSliceTestCase(unittest.TestCase):
                 leds.ccw()
                 self.assertTrue(all(tuple(leds[i]) == ref[(-(k+1)+i)%n] for i in range(n)))
 
-                
+
+    def doTestRotatePart(self, mem):
+        # Some part of a WSlice that starts past the beginning of the
+        # underlying WS2812 can be rotated
+        ws = WS2812(spi_bus=1, led_count=8, mem=mem)
+        for i in range(len(ws)):
+            ws[i] = b'foo'
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws))))
+        leds = WSlice(ws, 2, 6)
+        n = len(leds)
+        for i, t in zip(range(n), tg(n,0)):
+            leds[i] = t
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,6)))
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (3,4,5), (6,7,8), (9,10,11)])
+        leds.cw(1)
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,6)))
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (6,7,8), (9,10,11), (3,4,5)])
+        leds.cw(1)
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,6)))
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (9,10,11), (3,4,5), (6,7,8)])
+        leds.cw(1)
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,6)))
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (3,4,5), (6,7,8), (9,10,11)])
+        leds.ccw(1)
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,6)))
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (9,10,11), (3,4,5), (6,7,8)])
+        leds.ccw(1)
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,6)))
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (6,7,8), (9,10,11), (3,4,5)])
+        leds.ccw(1)
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,6)))
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (3,4,5), (6,7,8), (9,10,11)])
+
+
     @unittest.skip("FIXME: blows memory")
     def testRotatePlaces(self):
         # A chain can be rotated

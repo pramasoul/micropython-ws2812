@@ -120,7 +120,7 @@ class WSlice(SubscriptableForPixel):
         tbuf = bytearray(12)
         b = uctypes.addressof(tbuf)
         _wordsmove(b, a+12*start, 3) # stash 3 words that will get overwritten
-        _wordsmove(a, a+12, 3*(stop-start-1)) # move all but the last word down
+        _wordsmove(a+12*start, a+12*(start+1), 3*(stop-start-1)) # move all but the last word down
         _wordsmove(a+12*(stop-1), b, 3) # unstash
 
     def ccw(self, start=0, stop=None):
@@ -135,7 +135,7 @@ class WSlice(SubscriptableForPixel):
         tbuf = bytearray(12)
         b = uctypes.addressof(tbuf)
         _wordsmove(b, a+12*(stop-1), 3) # stash 3 words that will get overwritten
-        _wordsmove(a+12, a, 3*(stop-start-1)) # move all but the last word down
+        _wordsmove(a+12*(start+1), a+12*start, 3*(stop-start-1)) # move all but the last word down
         _wordsmove(a+12*(start), b, 3) # unstash
 
     def shift(self, amount=1, start=0, stop=None):
