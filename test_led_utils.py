@@ -6,11 +6,11 @@ import unittest
 import pyb
 import gc
 import math
-
 import random
+import uctypes
 
 from ws2812 import WS2812, Pixel, PREALLOCATE, CACHE, RECREATE
-from led_utils import WSlice
+from led_utils import WSlice, _wordsmove
 
 #log = logging.getLogger("test_ws2812")
 
@@ -24,9 +24,70 @@ def tg(led_count, start):
         yield triple(start + 3*i)
 
 
+class VariousTestCase(unittest.TestCase):
+    def setUp(self):
+        #logging.basicConfig(level=logging.INFO)
+        gc.collect()
+        random.seed("WSlice")
+
+    def tearDown(self):
+        pass
+    
+    def test_wordsmove(self):
+        b = bytearray(range(8*4))
+        ref = b[:]
+        self.assertEqual(b, ref)
+        a = uctypes.addressof(b)
+        self.assertEqual(a&3, 0) # word-aligned
+
+        # A zero-length move does nothing
+        _wordsmove(a, a+3*4, 0)
+        self.assertEqual(b, ref)
+
+        # A negative-length move does nothing
+        _wordsmove(a, a+3*4, -2)
+        self.assertEqual(b, ref)
+
+        # A move with dest=src does nothing
+        _wordsmove(a+3*4, a+3*4, 0)
+        self.assertEqual(b, ref)
+
+        # A simple move down
+        b = bytearray(range(8*4))
+        a = uctypes.addressof(b)
+        ref = b[:]
+        ref[0*4:2*4] = b[3*4:5*4]
+        _wordsmove(a, a+3*4, 2)
+        self.assertEqual(list(b), list(ref))
+
+        # A simple move up
+        b = bytearray(range(8*4))
+        a = uctypes.addressof(b)
+        ref = b[:]
+        ref[3*4:5*4] = b[0*4:2*4]
+        _wordsmove(a+3*4, a, 2)
+        self.assertEqual(list(b), list(ref))
+
+        # An overlapping move down
+        b = bytearray(range(8*4))
+        a = uctypes.addressof(b)
+        ref = b[:]
+        ref[0*4:6*4] = b[2*4:8*4]
+        _wordsmove(a, a+2*4, 6)
+        self.assertEqual(list(b), list(ref))
+
+        # An overlapping move up
+        b = bytearray(range(8*4))
+        a = uctypes.addressof(b)
+        ref = b[:]
+        ref[2*4:8*4] = b[0*4:6*4]
+        _wordsmove(a+2*4, a, 6)
+        self.assertEqual(list(b), list(ref))
+
+
 class WSliceTestCase(unittest.TestCase):
-    names = """PixelAccess Rotate RotateSubsection""".split()
-    #names = """PixelAccess""".split()
+    names = """Attrs PixelAccess Rotate RotateInset""".split()
+    #names = """Attrs RotateInset""".split()
 
     def setUp(self):
         #logging.basicConfig(level=logging.INFO)
@@ -51,6 +112,14 @@ class WSliceTestCase(unittest.TestCase):
                     raise
                 else:
                     print("ok")
+
+
+    def doTestAttrs(self, mem):
+        # A WSlice attributes have expected values
+        ws = WS2812(spi_bus=1, led_count=7, mem=mem)
+        ws.fill_buf(tg(len(ws), 0))
+        leds = WSlice(ws, 2, 4)
+        self.assertEqual(leds.buf, ws.buf[12*2:12*4])
 
 
     def doTestPixelAccess(self, mem):
@@ -115,8 +184,7 @@ class WSliceTestCase(unittest.TestCase):
 
 
     def doTestRotate(self, mem):
-        # A WSlice can be rotated
-        return
+        # A whole WSlice can be rotated
         ws = WS2812(spi_bus=1, led_count=75, mem=mem)
         for n in (1, 2, 7, 16, 33, 70):#, 190, 244, 400):
             leds = None
@@ -125,7 +193,7 @@ class WSliceTestCase(unittest.TestCase):
             leds = WSlice(ws, 0, n)
             ws.fill_buf(tg(n, 0))
             ref = list(tuple(t) for t in tg(n, 0))
-            self.assertEqual(list(tuple(v) for v in leds), ref)
+            self.assertTrue(all(tuple(leds[i]) == ref[i] for i in range(len(leds))))
             for k in range(n):
                 leds.cw()
                 self.assertTrue(all(tuple(leds[i]) == ref[(k+1+i)%n] for i in range(n)))
@@ -134,23 +202,58 @@ class WSliceTestCase(unittest.TestCase):
                 self.assertTrue(all(tuple(leds[i]) == ref[(-(k+1)+i)%n] for i in range(n)))
 
                 
-    def doTestRotateSubsection(self, mem):
-        # A chain can be rotated
+    def doTestRotateInset(self, mem):
+        # A WSlice that starts past the beginning of the underlying WS2812 can be rotated
+        ws = WS2812(spi_bus=1, led_count=7, mem=mem)
+        for i in range(len(ws)):
+            ws[i] = b'foo'
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws))))
+        leds = WSlice(ws, 2, 5)
+        n = len(leds)
+        for i, t in zip(range(n), tg(n,0)):
+            leds[i] = t
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (3,4,5), (6,7,8)])
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,5)))
+        leds.cw()
+        self.assertEqual([tuple(led) for led in leds], [(3,4,5), (6,7,8), (0,1,2)])
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,5)))
+        leds.cw()
+        self.assertEqual([tuple(led) for led in leds], [(6,7,8), (0,1,2), (3,4,5)])
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,5)))
+        leds.cw()
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (3,4,5), (6,7,8)])
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,5)))
+        leds.ccw()
+        self.assertEqual([tuple(led) for led in leds], [(6,7,8), (0,1,2), (3,4,5)])
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,5)))
+        leds.ccw()
+        self.assertEqual([tuple(led) for led in leds], [(3,4,5), (6,7,8), (0,1,2)])
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,5)))
+        leds.ccw()
+        self.assertEqual([tuple(led) for led in leds], [(0,1,2), (3,4,5), (6,7,8)])
+        self.assertTrue(all(bytes(ws[i]) == b'foo' for i in range(len(ws)) if i not in range(2,5)))
+
+
         ws = WS2812(spi_bus=1, led_count=90, mem=mem)
         for n in (1, 2, 7, 16, 33, 70):#, 190, 244, 400):
-            leds = None
-            t = None
+            leds = ref = None
             gc.collect()
-            leds = WSlice(ws, n//7, n + n//7)
+            leds_start = n//7
+            leds_end = n + n//7
+            leds = WSlice(ws, leds_start, leds_end)
             self.assertEqual(len(leds), n)
-            for i, t in zip(range(n), tg(n,0)):
+            for i, t in enumerate(tg(n,0)):
                 leds[i] = t
             ref = list(tuple(leds[i]) for i in range(n))
-            print("ref", ref)
-            print("leds", leds[:])
-            self.assertEqual(list(tuple(v) for v in leds), ref)
+            #print("\n\nstart %d, end %d" % (leds_start, leds_end))
+            #print("ref", ref)
+            #print("leds", leds[:])
             for k in range(n):
+                #print("\nk", k, "leds", leds[:])
+                #print("leds before cw:", [tuple(leds[i]) for i in range(n)])
                 leds.cw()
+                #print(" leds after cw:", [tuple(leds[i]) for i in range(n)])
+                #print("ref:", [ref[(k+1+i)%n] for i in range(n)])
                 self.assertTrue(all(tuple(leds[i]) == ref[(k+1+i)%n] for i in range(n)))
             for k in range(n):
                 leds.ccw()
