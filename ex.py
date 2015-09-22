@@ -2,7 +2,7 @@
 # Experimentation
 
 from ws2812 import WS2812
-from led_utils import Percolator, RingRamp, Ball
+from led_utils import WSlice, Percolator, Ring, RingRamp, Ball
 
 import logging
 
@@ -46,7 +46,11 @@ class Lightshow:
                                   led_count=config['leds'].get('qty')))
         self.percolator.bingo = self.bingo
 
-        self.rr = RingRamp(WS2812(2, 45), \
+        self.ws_rings = WS2812(2, 2*7 + 45)
+
+        self.feed_rollers = [WSlice(self.ws_rings, 0, 7),
+                             WSlice(self.ws_rings, 7, 14)]
+        self.rr = RingRamp(WSlice(self.ws_rings, start=2*7, end=2*7+45), \
                            circumference=60, \
                            bottom=7, \
                            g=-40.0,
@@ -192,6 +196,23 @@ class Lightshow:
             yield self.perk_and_roll(100, color, i)
 
     @coroutine
+    def spin_feed_rollers(self):
+        lower, upper = self.feed_rollers
+        #for i, color in enumerate([(16, 0, 0), (0, 16, 0), (0, 0, 16)]):
+        #    lower[2*i+1] = upper[2*i+1] = color
+        lower[0].b = upper[0].b = 16
+        v = 16
+        for i in range(1,7):
+            lower[i].r = upper[i].g = round(v)
+            v *= 0.3
+        while True:
+            lower.cw(start=1)
+            upper.ccw(start=1)
+            #lower.cw()
+            #upper.ccw()
+            yield from sleep(20)
+
+    @coroutine
     def play(self, cli, cmd, rol):
         yield self.percolator.play()
 
@@ -202,9 +223,13 @@ class Lightshow:
 
     @coroutine
     def master(self):
-        #self.radio_listener_quit = 0
         self.loop = yield GetRunningLoop(None)
         yield self.percolator.keep_leds_current(10)
+        for i in range(7, 63, 7):
+            self.percolator.leds[i] = self.percolator.stoichiometric
+        yield self.percolator.bingo()
+        yield self.rr.integrate_continuously()
+        yield self.spin_feed_rollers()
         while True:
             yield from self.flash_LED(self.act_led)
             yield from sleep(1000)
