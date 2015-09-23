@@ -9,7 +9,7 @@ import math
 
 import random
 
-from ws2812 import WS2812, Pixel
+from ws2812 import WS2812, Pixel, PREALLOCATE, CACHE, RECREATE
 
 #log = logging.getLogger("test_ws2812")
 
@@ -44,18 +44,37 @@ def vg():
 
 
 class WS2812TestCase(unittest.TestCase):
+    names = """SinglePixel GrindSinglePixel PixelAssignPixel
+MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
+    #names = ['SlicedRval']  # DEBUG
 
     def setUp(self):
         #logging.basicConfig(level=logging.INFO)
-        random.seed("ws2812")
+        gc.collect()
+        random.seed("WS2812")
 
     def tearDown(self):
         pass
 
     #@unittest.skip("x")
-    def testSinglePixel(self):
+    def testAllMemoryStrategies(self):
+        print()
+        for mem in (PREALLOCATE, CACHE, RECREATE):
+            for name in self.names:
+                fun = getattr(self, 'doTest'+name)
+                print("\tdoTest%s(mem=%d) ... " % (name, mem), end='')
+                try:
+                    gc.collect()
+                    fun(mem=mem)
+                except:
+                    print("Fail:", name, "with mem =", mem)
+                    raise
+                else:
+                    print("ok")
+
+    def doTestSinglePixel(self, mem):
         # buf is the correct length
-        leds = WS2812(spi_bus=1, led_count=1)
+        leds = WS2812(spi_bus=1, led_count=1, mem=mem)
         self.assertEqual(len(leds.buf), 13)
 
         # As-created the pixels are all off
@@ -74,6 +93,11 @@ class WS2812TestCase(unittest.TestCase):
         pix.g = 2
         pix.b = 3
         self.assertEqual([pix.r, pix.g, pix.b], [1,2,3])
+        self.assertEqual(list(pix), [1,2,3])
+
+        # Can get a named tuple of values
+        p = leds.get_led_values(0)
+        self.assertEqual([p.r, p.g, p.b], [1,2,3])
 
         # pixels can also be indexed into for colors
         self.assertEqual(list(pix), [1,2,3])
@@ -130,34 +154,133 @@ class WS2812TestCase(unittest.TestCase):
         self.assertEqual('|'.join('%x' % v for v in leds.buf),
                          '13|13|31|13|33|33|33|33|13|33|11|13|0')
 
+    def testMemoryUsed0(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            pass
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
 
-    def testMemoryUsedInOperations(self):
-        leds = WS2812(spi_bus=1, led_count=64)
+    #@unittest.skip("FIXME")
+    def testMemoryUsed1(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            leds[0].g = i          # no leak
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    #@unittest.skip("FIXME")
+    def testMemoryUsed2(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            leds[0] = b'\x08\x00\x00' # no leak
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    #@unittest.skip("FIXME")
+    def testMemoryUsed3(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        foo = b'foo'
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            leds[0] = foo           # no leak
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    #@unittest.skip("FIXME")
+    def testMemoryUsed4(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        bar = bytearray(range(3))
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            leds[0] = bar           # no leak
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    #@unittest.skip("FIXME")
+    def testMemoryUsed5(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            p = leds[i]
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    #@unittest.skip("FIXME")
+    def testMemoryUsed6(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            r = leds[i].r           # no leak
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    @unittest.skip("Fails")
+    def testMemoryUsed7(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            r,g,b = leds[i]                         # -64 each
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    #@unittest.skip("FIXME")
+    def testMemoryUsed8(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
+            r,g,b = leds[i].r, leds[i].g, leds[i].b # no leak
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    #@unittest.skip("FIXME")
+    def testMemoryUsed9(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
         foo = b'foo'
         bar = bytearray(range(3))
         foolist = list(range(3))
         prev_mem_free = gc.mem_free()
         for i in range(8):
-            leds[0].g = i          # no leak
-            leds[0] = b'\x08\x00\x00' # no leak
-            leds[0] = foo           # no leak
-            leds[0] = bar           # no leak
-            p = leds[i]             # no leak
-            r = leds[i].r           # no leak
-            #r,g,b = leds[i]                         # -64 each
-            r,g,b = leds[i].r, leds[i].g, leds[i].b # no leak
             t = leds[i][0]          # no leak
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    #@unittest.skip("FIXME")
+    def testMemoryUsed10(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
             for k in range(len(leds[i])): # no leak
                 leds[i][k] = leds[i-1][k]
+        delta_mem = gc.mem_free() - prev_mem_free
+        self.assertEqual(delta_mem, 0)
+
+    #@unittest.skip("FIXME")
+    def testMemoryUsed11(self):
+        leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
+        foolist = list(range(3))
+        prev_mem_free = gc.mem_free()
+        for i in range(8):
             leds[i] = foolist       # no leak
         delta_mem = gc.mem_free() - prev_mem_free
         self.assertEqual(delta_mem, 0)
 
+    def testSizes(self):
+        gc.collect()
+        m0 = gc.mem_free()
+        leds = WS2812(spi_bus=1, led_count=256, mem=PREALLOCATE)
+        gc.collect()
+        m1 = gc.mem_free()
+        print((m1-m0)/256)
+
 
     #@unittest.skip("x")
-    def testGrindSinglePixel(self):
+    def doTestGrindSinglePixel(self, mem):
         # get / set work as expected
-        leds = WS2812(spi_bus=1, led_count=1, intensity=1)
+        leds = WS2812(spi_bus=1, led_count=1, intensity=1, mem=mem)
         for i in range(1000):
             r = leds[0].r = random.getrandbits(8)
             g = leds[0].g = random.getrandbits(8)
@@ -165,9 +288,9 @@ class WS2812TestCase(unittest.TestCase):
             self.assertEqual(list(leds[0]), [r, g, b])
 
 
-    def testPixelAssignPixel(self):
+    def doTestPixelAssignPixel(self, mem):
         # A pixel can be assigned to another pixel
-        leds = WS2812(spi_bus=1, led_count=3)
+        leds = WS2812(spi_bus=1, led_count=3, mem=mem)
         for i in range(len(leds)):
             leds[i] = (i, 2*i, 3*i)
         self.assertEqual(list(leds[0]), [0, 0, 0])
@@ -185,14 +308,14 @@ class WS2812TestCase(unittest.TestCase):
 
 
     #@unittest.skip("x")
-    def testMultiPixel(self):
+    def doTestMultiPixel(self, mem):
         # buf is the correct length
         # WS2812 can be iterated over to yield pixels
         # pixel values can be set and read back
         for n in range(1, 400, 19):
             leds = None
             gc.collect()
-            leds = WS2812(spi_bus=1, led_count=n, prealloc=False)
+            leds = WS2812(spi_bus=1, led_count=n, mem=mem)
             self.assertEqual(len(leds), n)
             self.assertEqual(len(leds.buf), 12*n + 1)
 
@@ -210,64 +333,20 @@ class WS2812TestCase(unittest.TestCase):
                 self.assertEqual(list(pix), pb)
 
     #@unittest.skip("x")
-    def testMultiPixelFedIterator(self):
+    def doTestMultiPixelFedIterator(self, mem):
         # A chain can be fed from an iterator
-        for n in range(1, 400, 19):
+        for n in range(1, 200, 19):
             leds = None
             gc.collect()
-            leds = WS2812(spi_bus=1, led_count=n, prealloc=False)
+            leds = WS2812(spi_bus=1, led_count=n, mem=mem)
             leds.fill_buf(tg(n, 1))
             for pix, pg in zip(leds, tg(n, 1)):
                 self.assertEqual(list(pix), list(pg))
 
 
-    @unittest.skip("FIXME: blows memory")
-    def testRotatePlaces(self):
-        # A chain can be rotated
-        for n in range(1, 400, 19):
-            leds = None
-            gc.collect()
-            leds = WS2812(spi_bus=1, led_count=n)
-            leds.fill_buf(tg(n, 1))
-            for j in range(0, n, (n//7)+1):
-                gc.collect()
-                for pix, pg in zip(leds, tg(n, 1)):
-                    self.assertEqual(list(pix), list(pg))
-                #pixlist = list(list(pix) for pix in leds)
-                #rpixlist = pixlist[-j:] + pixlist[:-j]
-                leds.rotate_places(j)
-                gc.collect()
-                #self.assertEqual(list(list(pix) for pix in leds), rpixlist)
-                leds.rotate_places(-j)
-                
-
-    #@unittest.skip("x")
-    def testRotate(self):
-        # A chain can be rotated
-        for n in (1, 2, 7, 16, 33, 70, 190, 244, 400):
-            leds = None
-            t = None
-            gc.collect()
-            leds = WS2812(spi_bus=1, led_count=n, prealloc=False)
-            leds.fill_buf(tg(n, 1))
-            t = leds.a[:]       # Look inside and save the state
-            for j in range(0, n, (n//7)+1):
-                #gc.collect()
-                #self.assertEqual(leds.a, t)
-                alen = len(leds.a) - 1 # ignoring the pad
-                for i in range(alen):
-                    self.assertEqual(leds.a[i], t[i])
-                for cnt in range(j):
-                    leds.cw()
-                for i in range(alen):
-                    self.assertEqual(leds.a[i], t[(i+3*j)%alen])
-                for cnt in range(j):
-                    leds.ccw()
-
-                
-    def testSlicedRval(self):
+    def doTestSlicedRval(self, mem):
         # A chain slice can be read
-        leds = WS2812(spi_bus=1, led_count=9, prealloc=False)
+        leds = WS2812(spi_bus=1, led_count=9, mem=mem)
         self.assertTrue(all(isinstance(v, Pixel) for v in leds[:3]))
         self.assertTrue(all(isinstance(v, Pixel) for v in leds[2:5]))
         self.assertTrue(all(isinstance(v, Pixel) for v in leds[7:11]))
@@ -290,17 +369,17 @@ class WS2812TestCase(unittest.TestCase):
         self.assertEqual(tuple(leds[-len(leds)]), (i, 2*i, 3*i))
 
         # Negative index doesn't blow up unallocated
-        leds = WS2812(spi_bus=1, led_count=66, prealloc=False)
+        leds = WS2812(spi_bus=1, led_count=66, mem=mem)
         sum_neg = sum(sum([leds[i].r, leds[i].g, leds[i].b]) for i in range(-1, -len(leds), -1))
         sum_pos = sum(sum([leds[i].r, leds[i].g, leds[i].b]) for i in range(len(leds)))
         self.assertEqual(sum_neg, 0)
         self.assertEqual(sum_pos, 0)
-    
+
 
     #@unittest.skip("FIXME")
-    def testSlicedLval(self):
+    def doTestSlicedLval(self, mem):
         # A chain slice can be written
-        leds = WS2812(spi_bus=1, led_count=9, prealloc=False)
+        leds = WS2812(spi_bus=1, led_count=9, mem=mem)
         for i in range(len(leds)):
             leds[i] = (i, 2*i, 3*i)
         leds[0:3] = leds[3:6]
@@ -313,6 +392,7 @@ class WS2812TestCase(unittest.TestCase):
         for i in range(3):
             k = i + 6
             self.assertEqual(tuple(leds[k]), (i, 2*i, 3*i))
+
 
 
 def main():

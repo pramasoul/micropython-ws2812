@@ -3,8 +3,8 @@ import random
 import math
 from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
 from pyb import Timer, rng, micros, elapsed_micros
-from uctypes import addressof
-
+import uctypes
+from ws2812 import SubscriptableForPixel
 
 def display_list_for(x, color, blur=1.0):
     # In arbitrary pixel coordinates
@@ -58,9 +58,102 @@ def gaussian_blur_weights(x, blur=1.0):
     return rv
 
 
-class WSlice:
-    def __init__(self, ws, start=1, stop=-1):
+class WSlice(SubscriptableForPixel):
+    # This class encapsulates a WS2812 and provides new capabilities
+    # It intrudes into and depends on the internals of the pramasoul
+    # version of WS2812
+    def __init__(self, ws, start=0, end=None):
         self.ws = ws
+        if  start < -len(ws) or start >= len(ws):
+            raise IndexError("start %d is outside underlying ws of length %d" % (start, len(ws)))
+        start %= len(ws)
+        self.start = start
+        if end is None:
+            self.end = len(ws)
+        else:
+            self.end = end
+        self.pixels = ws[start:end]
+        self.sync = ws.sync
+        self.mem = ws.mem
+        self.buf = uctypes.bytearray_at(uctypes.addressof(ws.buf) + 3*4*start, 3*4*(end - start))
+
+    def __len__(self):
+        return len(self.pixels)
+
+    # Too fancy, creates memory stress:
+    """
+    def rotate_places(self, places):
+        length = len(self)
+        if places % length == 0: # Optimization, it works without
+            return
+        unqueued = set(range(length))
+        bb = self.ws.buf
+        queue = []
+        #print(list(tuple(pix) for pix in self))
+        while unqueued or queue:
+            if queue:
+                dst, contents = queue.pop()
+            else:
+                src = unqueued.pop()
+                #print(src, end='')
+                dst = (src + places) % length
+                contents = bb[12*src:12*(src+1)]
+            if dst in unqueued:
+                queue.insert(0, ((dst + places) % length, \
+                                 bytes(bb[12*dst:12*(dst+1)])))
+                unqueued.remove(dst)
+            #print('->', dst, end=' ')
+            bb[12*dst:12*(dst+1)] = contents
+            #print(list(tuple(pix) for pix in self))
+    """
+
+    
+    def cw(self, start=0, stop=None):
+        # Rotates [start, stop) one pixel clockwise
+        # i.e. toward the lower index
+        length = len(self)
+        if stop is None or stop > length:
+            stop = length
+        if stop <= start + 1:   # Trivial rotation
+            return
+        a = uctypes.addressof(self.buf)
+        tbuf = bytearray(12)
+        b = uctypes.addressof(tbuf)
+        _wordsmove(b, a+12*start, 3) # stash 3 words that will get overwritten
+        _wordsmove(a+12*start, a+12*(start+1), 3*(stop-start-1)) # move all but the last word down
+        _wordsmove(a+12*(stop-1), b, 3) # unstash
+
+    def ccw(self, start=0, stop=None):
+        # Rotates [start, stop) one pixel counter-clockwise
+        # i.e. toward the higher index
+        length = len(self)
+        if stop is None or stop > length:
+            stop = length
+        if stop <= start + 1:   # Trivial rotation
+            return
+        a = uctypes.addressof(self.buf)
+        tbuf = bytearray(12)
+        b = uctypes.addressof(tbuf)
+        _wordsmove(b, a+12*(stop-1), 3) # stash 3 words that will get overwritten
+        _wordsmove(a+12*(start+1), a+12*start, 3*(stop-start-1)) # move all but the last word down
+        _wordsmove(a+12*(start), b, 3) # unstash
+
+    def shift(self, amount=1, start=0, stop=None):
+        # Shifts leds[start:end] by amount to the right
+        # amount can be negative, making it a left shift
+        length = len(self)
+        if stop is None or stop > length:
+            stop = length
+        if amount < 0:
+            src = start - amount
+            dest = start
+            n = max(stop - start + amount, 0)
+        else:
+            src = start
+            dest = start + amount
+            n = max(stop - start - amount, 0)
+        a = uctypes.addressof(self.buf)
+        _wordsmove(a+12*dest, a+12*src, 3*n)
 
 
 class Lights:
@@ -268,11 +361,15 @@ class Ball:
         return s + '>'
 
 
+# FIXME: does this have a purpose?
 class Ring:
-    def __init__(self, leds, start, length):
+    def __init__(self, leds, start=0, length=None):
         self.leds = leds
         self.start = start
-        self.length = length
+        if length is None:
+            self.length = len(leds)
+        else:
+            self.length = length
 
     def cw(self):
         self.leds.cw(start=self.start, stop=self.start+self.length)
@@ -398,3 +495,43 @@ class RingRamp(Lights):
             self.integrate(dt * tscale)
             self.show_balls()
             yield from sleep(nap)
+
+
+@micropython.asm_thumb
+def _wordsmove(r0, r1, r2):
+    # styled after memmove(dest, src, n), but moving words instead of bytes
+    # Registers:
+    # r0: destination address
+    # r1: source address
+    # r2: number of 32-bit words to move
+    # r3: temporary
+    # r4: step
+    # Note this could be improved by using the full Thumb instruction set. See:
+    # http://docs.micropython.org/en/latest/reference/asm_thumb2_hints_tips.html#use-of-unsupported-instructions
+    cmp(r2, 0)                  # if n <= 0:
+    ble(done)                   #  return
+    mov(r4, 4)                  # words are 4 bytes
+    cmp(r1, r0)                 # src - dest
+    beq(done)                   # src == dest: return
+    bhi(loop)                   # src > dest: move'em
+
+    # Here the source is a lower address than the destination. To
+    # protect against overwriting the data during the move, we move it
+    # starting at the end (high) address
+    neg(r4, r4)                 # -4
+    add(r3, r2, r2)             # 2 * n
+    add(r3, r3, r3)             # 4 * n
+    add(r3, r3, r4)             # 4 * (n - 1)
+    add(r0, r0, r3)             # r0 is dest[-1]
+    add(r1, r1, r3)             # r1 is src[-1]
+
+    # The moving itself
+    label(loop)
+    ldr(r3, [r1, 0])
+    str(r3, [r0, 0])
+    add(r0, r0, r4)
+    add(r1, r1, r4)
+    sub(r2, 1)
+    bgt(loop)
+
+    label(done)
