@@ -119,9 +119,9 @@ class WSlice(SubscriptableForPixel):
         a = uctypes.addressof(self.buf)
         tbuf = bytearray(12)
         b = uctypes.addressof(tbuf)
-        _wordsmove(b, a+12*start, 3) # stash 3 words that will get overwritten
-        _wordsmove(a+12*start, a+12*(start+1), 3*(stop-start-1)) # move all but the last word down
-        _wordsmove(a+12*(stop-1), b, 3) # unstash
+        _movewords(b, a+12*start, 3) # stash 3 words that will get overwritten
+        _movewords(a+12*start, a+12*(start+1), 3*(stop-start-1)) # move all but the last word down
+        _movewords(a+12*(stop-1), b, 3) # unstash
 
     def ccw(self, start=0, stop=None):
         # Rotates [start, stop) one pixel counter-clockwise
@@ -134,9 +134,9 @@ class WSlice(SubscriptableForPixel):
         a = uctypes.addressof(self.buf)
         tbuf = bytearray(12)
         b = uctypes.addressof(tbuf)
-        _wordsmove(b, a+12*(stop-1), 3) # stash 3 words that will get overwritten
-        _wordsmove(a+12*(start+1), a+12*start, 3*(stop-start-1)) # move all but the last word down
-        _wordsmove(a+12*(start), b, 3) # unstash
+        _movewords(b, a+12*(stop-1), 3) # stash 3 words that will get overwritten
+        _movewords(a+12*(start+1), a+12*start, 3*(stop-start-1)) # move all but the last word down
+        _movewords(a+12*(start), b, 3) # unstash
 
     def shift(self, amount=1, start=0, stop=None):
         # Shifts leds[start:end] by amount to the right
@@ -153,7 +153,7 @@ class WSlice(SubscriptableForPixel):
             dest = start + amount
             n = max(stop - start - amount, 0)
         a = uctypes.addressof(self.buf)
-        _wordsmove(a+12*dest, a+12*src, 3*n)
+        _movewords(a+12*dest, a+12*src, 3*n)
 
 
 class Lights:
@@ -285,11 +285,11 @@ class Percolator(Lights):
         stoichiometric = self.stoichiometric
         leds = self.leds
         led = self.leds[i]
-        if any(a > b for a,b in zip(led, stoichiometric)):
-            return bytes(max(a-b, 0) for a,b in zip(led, stoichiometric))
-        if all(a == b for a,b in zip(led, stoichiometric)):
+        if any(c > s for c,s in zip(led, stoichiometric)):
+            return bytes(max(c-s, 0) for c,s in zip(led, stoichiometric))
+        if all(c == s for c,s in zip(led, stoichiometric)):
             #return stoichiometric
-            if all(all(a == b for a,b in zip(leds[i], stoichiometric)) \
+            if all(all(c == s for c,s in zip(leds[i], stoichiometric)) \
                    for i in range(7, 63, 7)):
                 print("bingo!")
                 yield self.bingo()
@@ -486,7 +486,7 @@ class RingRamp(Lights):
         #print("integrating continuously, napping %d" % nap)
         tscale = 1 / 1000000
         then = micros()
-        should_be_less_than = (nap + 30) * 1000 
+        #should_be_less_than = (nap + 30) * 1000
         while True:
             dt = elapsed_micros(then)
             #if dt >= should_be_less_than:
@@ -497,8 +497,28 @@ class RingRamp(Lights):
             yield from sleep(nap)
 
 
+
 @micropython.asm_thumb
-def _wordsmove(r0, r1, r2):
+def _fillwords(r0, r1, r2):
+    # _fillwords(address, word, n), returns first word address past fill
+    # Registers:
+    # r0: address of start of block of words to fill
+    # r1: value to fill with
+    # r2: number of 32-bit words to fill
+    # Note this could be improved by using the full Thumb instruction set. See:
+    # http://docs.micropython.org/en/latest/reference/asm_thumb2_hints_tips.html#use-of-unsupported-instructions
+    mov(r4, 4)
+    label(loop)
+    cmp(r2, 0)
+    ble(done)
+    str(r1, [r0, 0])
+    add(r0, 4)
+    sub(r2, 1)
+    b(loop)
+    label(done)
+
+@micropython.asm_thumb
+def _movewords(r0, r1, r2):
     # styled after memmove(dest, src, n), but moving words instead of bytes
     # Registers:
     # r0: destination address
