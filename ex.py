@@ -205,11 +205,15 @@ class Lightshow:
         for i in range(1,7):
             lower[i].r = upper[i].g = round(v)
             v *= 0.3
+        #time = self.loop.time
+        #then = time()
         while True:
             lower.cw(start=1)
             upper.ccw(start=1)
-            #lower.cw()
-            #upper.ccw()
+            #now = time()
+            #t = 20 - (now - then)
+            #then = now
+            #yield from sleep(t)
             yield from sleep(20)
 
     @coroutine
@@ -243,8 +247,9 @@ class Lightshow:
 @coroutine
 def run(cli, lightshow, config):
     yield lightshow.master()
-    yield from cli.repl()
-
+    while True:
+        yield from cli.repl()   # Exits when console not connected
+        yield from sleep(400)
 
 def main():
 
