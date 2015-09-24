@@ -366,6 +366,7 @@ class Ball:
 
 
 # FIXME: does this have a purpose?
+"""
 class Ring:
     def __init__(self, leds, start=0, length=None):
         self.leds = leds
@@ -391,7 +392,7 @@ class Ring:
     def __repr__(self):
         return("<ring start %d len %d leds %r>" % \
                (self.start, self.length, self.leds))
-
+"""
 
 class RingRamp(Lights):
     # A ring-shaped ramp for balls in gravity
@@ -416,7 +417,7 @@ class RingRamp(Lights):
         if circumference is not None:
             self.circumference = circumference
         else:
-            self.circumference = led(leds)
+            self.circumference = len(leds)
         self.pix_per_radian = self.circumference / two_pi
         self.r = self.circumference / two_pi
         self.blur = blur
