@@ -75,7 +75,8 @@ class WSlice(SubscriptableForPixel):
         self.pixels = ws[start:end]
         self.sync = ws.sync
         self.mem = ws.mem
-        self.buf = uctypes.bytearray_at(uctypes.addressof(ws.buf) + 3*4*start, 3*4*(end - start))
+        self.a = uctypes.addressof(ws.buf) + 3*4*start
+        self.buf = uctypes.bytearray_at(self.a, 3*4*(end - start))
 
     def __len__(self):
         return len(self.pixels)
@@ -162,6 +163,9 @@ class Lights:
         self.timer = timer
         self.leds_sync_last_done = 0
         self.leds_need_sync = False
+
+    def clear(self):
+        _fillwords(self.a, 0x11111111, len(self.leds))
 
     def add_color_to(self, i, color):
         led = self.leds[i]
