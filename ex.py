@@ -203,7 +203,7 @@ class Lightshow:
         lower[0].b = upper[0].b = 16
         v = 16
         for i in range(1,7):
-            lower[i].r = upper[(i+4)%6+1].g = round(v)
+            lower[i].r = upper[(4-i)%6+1].g = round(v)
             v *= 0.3
         #time = self.loop.time
         #then = time()
