@@ -165,7 +165,7 @@ class Lights:
         self.leds_need_sync = False
 
     def clear(self):
-        _fillwords(self.a, 0x11111111, len(self.leds))
+        _fillwords(self.a, 0x11111111, 3*len(self.leds))
 
     def add_color_to(self, i, color):
         led = self.leds[i]
