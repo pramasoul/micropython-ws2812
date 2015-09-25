@@ -164,6 +164,7 @@ class Lights:
         self.leds_sync_last_done = 0
         self.leds_need_sync = False
 
+    # FIXME: who sets self.a?
     def clear(self):
         _fillwords(self.a, 0x11111111, 3*len(self.leds))
 
@@ -207,6 +208,8 @@ class Lights:
                 yield Sleep(last_check_time + interval - now)
             last_check_time = loop.time()
             if self.leds_need_sync:
+                #self.leds.sync()
+                self.render()
                 self.leds.sync()
                 self.leds_sync_last_done = loop.time()
                 self.leds_need_sync = False
@@ -216,11 +219,13 @@ class Percolator(Lights):
     def __init__(self, leds):
         # Assume 8x8, and 0-based, for now
         super().__init__(leds)
+        self.lattice = [bytearray(3) for i in range(len(leds))]
         self.top_i = len(leds) - 1
         self.bottom_i = 0
         self.random = random.SystemRandom()
         self.perk_quit = False
-        self.stoichiometric = (31,31,31)
+        self.stoichiometric = (1,1,1)
+        self.brightness = 1.0
 
     def down_left(self, i):
         # return the index into leds that is down-left of i
@@ -252,6 +257,30 @@ class Percolator(Lights):
 
     def at_mid(self, i):
         return i//8 + i%8 == 7
+
+    def gen_RGBs(self):
+        b = round(self.brightness * 256)
+        for p in self.lattice:
+            yield (min((b*v + 128) >> 8, 255) for v in p)
+
+    def render(self):
+        leds = self.leds
+        leds.update_buf(self.gen_RGBs())
+
+    def add_color_to(self, i, color):
+        p = self.lattice[i]
+        for i in range(3):
+            p[i] += color[i]
+
+    def sub_color_from(self, i, color):
+        p = self.lattice[i]
+        for i in range(3):
+            p[i] -= color[i]
+
+    def set_color_of(self, i, color):
+        p = self.lattice[i]
+        for i in range(3):
+            p[i] = color[i]
 
 
     @coroutine
@@ -287,13 +316,13 @@ class Percolator(Lights):
     @coroutine
     def react_at(self, i):
         stoichiometric = self.stoichiometric
-        leds = self.leds
-        led = self.leds[i]
-        if any(c > s for c,s in zip(led, stoichiometric)):
-            return bytes(max(c-s, 0) for c,s in zip(led, stoichiometric))
-        if all(c == s for c,s in zip(led, stoichiometric)):
+        lattice = self.lattice
+        p = lattice[i]
+        if any(c > s for c,s in zip(p, stoichiometric)):
+            return bytes(max(c-s, 0) for c,s in zip(p, stoichiometric))
+        if all(c == s for c,s in zip(p, stoichiometric)):
             #return stoichiometric
-            if all(all(c == s for c,s in zip(leds[i], stoichiometric)) \
+            if all(all(c == s for c,s in zip(lattice[i], stoichiometric)) \
                    for i in range(7, 63, 7)):
                 print("bingo!")
                 yield self.bingo()

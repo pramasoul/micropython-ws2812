@@ -2,7 +2,7 @@
 # Experimentation
 
 from ws2812 import WS2812
-from led_utils import WSlice, Percolator, Ring, RingRamp, Ball
+from led_utils import WSlice, Percolator, RingRamp, Ball
 
 import logging
 
@@ -186,12 +186,13 @@ class Lightshow:
     @coroutine
     def bingo(self):
         stars = list(range(7, 63, 7))
-        leds = self.percolator.leds
+        p = self.percolator
+        lattice = p.lattice
         rand.shuffle(stars)
         for i in stars:
             yield from sleep(200)
-            color = tuple(iter(leds[i]))
-            leds[i].off()
+            color = tuple(lattice[i])
+            p.set_color_of(i, (0,0,0))
             i = self.percolator.down(i, rng()&1)
             yield self.perk_and_roll(100, color, i)
 
@@ -230,7 +231,7 @@ class Lightshow:
         self.loop = yield GetRunningLoop(None)
         yield self.percolator.keep_leds_current(10)
         for i in range(7, 63, 7):
-            self.percolator.leds[i] = self.percolator.stoichiometric
+            self.percolator.set_color_of(i, self.percolator.stoichiometric)
         yield self.percolator.bingo()
         yield self.rr.integrate_continuously()
         yield self.spin_feed_rollers()
