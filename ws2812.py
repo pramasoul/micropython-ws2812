@@ -243,6 +243,7 @@ class WS2812(SubscriptableForPixel):
             self.spi.send(short_buf)
             short_buf[-1] = t
 
+    _ubb = bytearray(3)
     def update_buf(self, data, where=0):
         # Fill a part of the buffer with RGB data.
         # Returns the index of the first unfilled LED
@@ -250,9 +251,12 @@ class WS2812(SubscriptableForPixel):
         # e.g. [(1,2,3), (4,5,6)]
         # or some generator of tuples or generators
         set_led = self.set_led
-        b = bytearray(3)
-        for b[0], b[1], b[2] in tuple(data):
-            set_led(where, b)
+        b = self._ubb
+        for d in data:
+            if not isinstance(d, bytearray):
+                b[0], b[1], b[2] = d
+                d = b
+            set_led(where, d)
             where += 1
         return where
 
