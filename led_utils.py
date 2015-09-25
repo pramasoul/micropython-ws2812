@@ -73,13 +73,16 @@ class WSlice(SubscriptableForPixel):
         else:
             self.end = end
         self.pixels = ws[start:end]
-        self.sync = ws.sync
+        self.sync = ws.sync     # risky
         self.mem = ws.mem
         self.a = uctypes.addressof(ws.buf) + 3*4*start
         self.buf = uctypes.bytearray_at(self.a, 3*4*(end - start))
 
     def __len__(self):
         return len(self.pixels)
+
+    def update_buf(self, data, where=0):
+        self.ws.update_buf(data, where=where+self.start)
 
     # Too fancy, creates memory stress:
     """
@@ -452,6 +455,8 @@ class RingRamp(Lights):
         self.blur = blur
         self.balls = []
         self.ball_check_fun = ball_check_fun
+        self.lattice = [bytearray(3) for i in range(len(leds))]
+        self.brightness = 1.0
 
     def integrate(self, dt):
         next_balls = []
@@ -468,7 +473,44 @@ class RingRamp(Lights):
                     raise
         self.balls = next_balls
 
+    def add_color_to(self, i, color):
+        p = self.lattice[i]
+        for i in range(3):
+            p[i] += color[i]
+
+    def gen_RGBs(self):
+        c = self.circumference
+        bottom = self.bottom
+        lattice_len = len(self.lattice)
+        for p in self.lattice:
+            p[0] = p[1] = p[2] = 0
+
+        for ball in self.balls:
+            # DEBUG:
+            if sum(ball.color) == 0:
+                print("dark ball", ball)
+
+            for i, color in self.display_list_for_angle(ball.θ, ball.color, self.blur):
+                # Input positions in pixel circle space
+                # Rotates to LED space and clips to available arc
+                k = (i + bottom) % c
+                if k < lattice_len:
+                    self.add_color_to(k, color)
+
+        b = round(self.brightness * 256)
+        for p in self.lattice:
+            yield (min((b*v + 128) >> 8, 255) for v in p)
+
+
+    def render(self):
+        leds = self.leds
+        leds.update_buf(self.gen_RGBs())
+
     def show_balls(self):
+        self.render()
+        self.leds.sync()
+
+    def was_show_balls(self):
         c = self.circumference
         survivors = []
         for ball in self.balls:

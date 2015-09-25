@@ -56,9 +56,12 @@ class Lightshow:
                            g=-40.0,
                            ball_check_fun = self.ball_check)
 
-        self.zap_balls = False
-
-
+#        self.zap_balls = False
+        self.brightness = 1.0
+        
+    def set_brightness(self, v):
+        self.brightness = self.rr.brightness = self.percolator.brightness = v
+        
     @coroutine
     def flash_LED(self, led, dur=1):
         led.on()
@@ -117,16 +120,17 @@ class Lightshow:
         # Return a list of balls to replace it
         # (e.g. just [ball] to make no changes)
         rv = []
-        if self.zap_balls:
-            ball.zap = True
-            rv.append(ball)
+#        if self.zap_balls:
+#            ball.zap = True
+#            rv.append(ball)
 #        if θ > π:
 #            θ -= 2 * π
 
-        elif θ <= -2.408554 <= ball.θ: # and ball.ω >= 0:
+#        elif θ <= -2.408554 <= ball.θ: # and ball.ω >= 0:
+        if θ <= -2.408554 <= ball.θ: # and ball.ω >= 0:
             # crossed off the top of the "C"
-            ball.zap = True
-            rv.append(ball)
+#            ball.zap = True
+#            rv.append(ball)
             #print("θ=%f, ω=%f" % (θ, ω ))
             #print("zapped %r" % ball)
             self.loop.call_soon(self.perk_and_roll(100, ball.color))
@@ -138,9 +142,9 @@ class Lightshow:
             # Crossed the centerline of the drive rollers
             #print("rollered %r" % ball)
             #ball.ω = max(ball.ω , 2.08)
-            # Can't omit this ball, have to zap it for correct rendering
-            ball.zap = True
-            rv.append(ball)
+#            # Can't omit this ball, have to zap it for correct rendering
+#            ball.zap = True
+#            rv.append(ball)
 
             # Grind this ball up into primary colors
             color = list(iter(ball.color))
@@ -199,16 +203,19 @@ class Lightshow:
     @coroutine
     def spin_feed_rollers(self):
         lower, upper = self.feed_rollers
-        #for i, color in enumerate([(16, 0, 0), (0, 16, 0), (0, 0, 16)]):
-        #    lower[2*i+1] = upper[2*i+1] = color
-        lower[0].b = upper[0].b = 16
-        v = 16
-        for i in range(1,7):
-            lower[i].r = upper[(4-i)%6+1].g = round(v)
-            v *= 0.3
-        #time = self.loop.time
-        #then = time()
+        # This is all too simple to bother with a separate model and a
+        # separate render method.
+        brightness = None
         while True:
+            if self.brightness != brightness:
+                brightness = self.brightness
+                lower[0].b = upper[0].b = round(brightness)
+                v = brightness
+                for i in range(1,7):
+                    lower[i].r = upper[(4-i)%6+1].g = round(v)
+                    v *= 0.3
+            #time = self.loop.time
+            #then = time()
             lower.cw(start=1)
             upper.ccw(start=1)
             #now = time()
