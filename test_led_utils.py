@@ -6,7 +6,7 @@ import unittest
 import pyb
 import gc
 import math
-import random
+#import random
 import uctypes
 
 from ws2812 import WS2812, Pixel, PREALLOCATE, CACHE, RECREATE
@@ -29,7 +29,7 @@ class VariousTestCase(unittest.TestCase):
     def setUp(self):
         #logging.basicConfig(level=logging.INFO)
         gc.collect()
-        random.seed("WSlice")
+        #random.seed("WSlice")
 
     def tearDown(self):
         pass
@@ -123,7 +123,7 @@ class WSliceTestCase(unittest.TestCase):
     def setUp(self):
         #logging.basicConfig(level=logging.INFO)
         gc.collect()
-        random.seed("WSlice")
+        #random.seed("WSlice")
 
     def tearDown(self):
         pass
@@ -345,7 +345,7 @@ class WSliceTestCase(unittest.TestCase):
 class PercolatorTestCase(unittest.TestCase):
     def setUp(self):
         #logging.basicConfig(level=logging.INFO)
-        random.seed("WSlice")
+        #random.seed("WSlice")
         self.ws = ws = WS2812(1,64)
         for i in range(len(ws)):
             ws[i] = (i, 2*i, 3*i)
