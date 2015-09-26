@@ -161,25 +161,53 @@ class WSlice(SubscriptableForPixel):
 
 
 class Lights:
+    # Lights encapsulated a WS2812 or WSlice, and provides a "lattice"
+    # model of the pixels and a default rendering of them to the leds
     def __init__(self, leds, timer=None):
         self.leds = leds
+        self.lattice = [bytearray(3) for i in range(len(leds))]
         self.timer = timer
         self.leds_sync_last_done = 0
         self.leds_need_sync = False
+        self.brightness = 1.0
+
+    def __len__(self):
+        return len(self.leds)
 
     # FIXME: who sets self.a?
+#    def clear(self):
+#        _fillwords(self.a, 0x11111111, 3*len(self.leds))
+
     def clear(self):
-        _fillwords(self.a, 0x11111111, 3*len(self.leds))
+        for p in self.lattice:
+            p[0] = p[1] = p[2] = 0
 
     def add_color_to(self, i, color):
-        led = self.leds[i]
-        for i in range(len(led)):
-            led[i] += color[i]
+        p = self.lattice[i]
+        for i in range(3):
+            p[i] += color[i]
 
     def sub_color_from(self, i, color):
-        led = self.leds[i]
-        for i in range(len(led)):
-            led[i] -= color[i]
+        p = self.lattice[i]
+        for i in range(3):
+            p[i] -= color[i]
+
+    def set_color_of(self, i, color):
+        p = self.lattice[i]
+        for i in range(3):
+            p[i] = color[i]
+
+    def model_colors(self):
+        return self.lattice
+
+    def gen_RGBs(self):
+        b = round(self.brightness * 256)
+        for p in self.model_colors():
+            yield (min(int((b*v + 128) / 256), 255) for v in p)
+
+    def render(self):
+        leds = self.leds
+        leds.update_buf(self.gen_RGBs())
 
     @coroutine
     def show_for(self, duration):
@@ -222,13 +250,11 @@ class Percolator(Lights):
     def __init__(self, leds):
         # Assume 8x8, and 0-based, for now
         super().__init__(leds)
-        self.lattice = [bytearray(3) for i in range(len(leds))]
         self.top_i = len(leds) - 1
         self.bottom_i = 0
         self.random = random.SystemRandom()
         self.perk_quit = False
         self.stoichiometric = (1,1,1)
-        self.brightness = 1.0
 
     def down_left(self, i):
         # return the index into leds that is down-left of i
@@ -260,30 +286,6 @@ class Percolator(Lights):
 
     def at_mid(self, i):
         return i//8 + i%8 == 7
-
-    def gen_RGBs(self):
-        b = round(self.brightness * 256)
-        for p in self.lattice:
-            yield (min((b*v + 128) >> 8, 255) for v in p)
-
-    def render(self):
-        leds = self.leds
-        leds.update_buf(self.gen_RGBs())
-
-    def add_color_to(self, i, color):
-        p = self.lattice[i]
-        for i in range(3):
-            p[i] += color[i]
-
-    def sub_color_from(self, i, color):
-        p = self.lattice[i]
-        for i in range(3):
-            p[i] -= color[i]
-
-    def set_color_of(self, i, color):
-        p = self.lattice[i]
-        for i in range(3):
-            p[i] = color[i]
 
 
     @coroutine
@@ -397,34 +399,49 @@ class Ball:
         return s + '>'
 
 
-# FIXME: does this have a purpose?
 """
-class Ring:
-    def __init__(self, leds, start=0, length=None):
-        self.leds = leds
-        self.start = start
-        if length is None:
-            self.length = len(leds)
-        else:
-            self.length = length
+def cw(lattice):
+    t = lattice[0]
+    lattice[:-1] = lattice[1:]
+    lattice[-1] = t
 
-    def cw(self):
-        self.leds.cw(start=self.start, stop=self.start+self.length)
-
-    def ccw(self):
-        self.leds.ccw(start=self.start, stop=self.start+self.length)
-
-    def clear(self):
-        for i in range(self.start, self.start+self.length):
-            self.leds[i].off()
-
-    def one(self, rgb=(1,1,1), pos=0):
-        self.leds[self.start + pos % self.length] = bytes(rgb)
-
-    def __repr__(self):
-        return("<ring start %d len %d leds %r>" % \
-               (self.start, self.length, self.leds))
+def ccw(lattice):
+    t = lattice[-1]
+    lattice[1:] = lattice[:-1]
+    lattice[0] = t
 """
+
+class Jewel7(Lights):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.center = self.lattice[0]
+        self.gear = Gear(WSlice(self.leds, 1, 7))
+        
+    def model_colors(self):
+        yield self.lattice[0]
+        yield from self.gear.model_colors()
+
+class Gear(Lights):
+    # A gear has a pattern and a phase (in units of "teeth",
+    # i.e. lattice points)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.phase = 0
+
+    def cw(self, n=1):
+        self.phase = (self.phase + n) % len(self)
+
+    def ccw(self, n=1):
+        self.phase = (self.phase - n) % len(self)
+
+    def model_colors(self):
+        length = len(self.lattice)
+        start = round(self.phase) % length
+        for c in self.lattice[start:]:
+            yield c
+        for c in self.lattice[:start]:
+            yield c
+
 
 class RingRamp(Lights):
     # A ring-shaped ramp for balls in gravity
@@ -455,8 +472,6 @@ class RingRamp(Lights):
         self.blur = blur
         self.balls = []
         self.ball_check_fun = ball_check_fun
-        self.lattice = [bytearray(3) for i in range(len(leds))]
-        self.brightness = 1.0
 
     def integrate(self, dt):
         next_balls = []
@@ -500,11 +515,6 @@ class RingRamp(Lights):
         b = round(self.brightness * 256)
         for p in self.lattice:
             yield (min((b*v + 128) >> 8, 255) for v in p)
-
-
-    def render(self):
-        leds = self.leds
-        leds.update_buf(self.gen_RGBs())
 
     def show_balls(self):
         self.render()
