@@ -2,7 +2,7 @@
 # Experimentation
 
 from ws2812 import WS2812
-from led_utils import WSlice, Percolator, RingRamp, Ball
+from led_utils import WSlice, Percolator, RingRamp, Ball, Jewel7
 
 import logging
 
@@ -48,8 +48,9 @@ class Lightshow:
 
         self.ws_rings = WS2812(2, 2*7 + 45)
 
-        self.feed_rollers = [WSlice(self.ws_rings, 0, 7),
-                             WSlice(self.ws_rings, 7, 14)]
+        self.feed_rollers = [Jewel7(WSlice(self.ws_rings, 0, 7)),
+                             Jewel7(WSlice(self.ws_rings, 7, 14))]
+
         self.rr = RingRamp(WSlice(self.ws_rings, start=2*7, end=2*7+45), \
                            circumference=60, \
                            bottom=7, \
@@ -57,10 +58,11 @@ class Lightshow:
                            ball_check_fun = self.ball_check)
 
 #        self.zap_balls = False
-        self.brightness = 1.0
+        self.set_brightness(31)
         
     def set_brightness(self, v):
         self.brightness = self.rr.brightness = self.percolator.brightness = v
+        #self.percolator.leds_need_sync = True
         
     @coroutine
     def flash_LED(self, led, dur=1):
@@ -203,26 +205,35 @@ class Lightshow:
     @coroutine
     def spin_feed_rollers(self):
         lower, upper = self.feed_rollers
-        # This is all too simple to bother with a separate model and a
-        # separate render method.
-        brightness = None
+        lower.center[2] = upper.center[2] = 1
+        v = 1.0
+        for i in range(len(lower.gear)):
+            lower.gear.lattice[i] = (v, 0, 0)
+            upper.gear.lattice[i] = (0, v, 0)
+            v *= 0.3
         while True:
-            if self.brightness != brightness:
-                brightness = self.brightness
-                lower[0].b = upper[0].b = round(brightness)
-                v = brightness
-                for i in range(1,7):
-                    lower[i].r = upper[(4-i)%6+1].g = round(v)
-                    v *= 0.3
             #time = self.loop.time
             #then = time()
-            lower.cw(start=1)
-            upper.ccw(start=1)
+            lower.gear.cw()
+            upper.gear.ccw()
             #now = time()
             #t = 20 - (now - then)
             #then = now
             #yield from sleep(t)
             yield from sleep(20)
+
+    @coroutine
+    def manage_brightness(self):
+        a = pyb.ADC(pyb.Pin('Y12'))
+        amb = a.read()/4096
+        while True:
+            v = a.read()
+            yield
+            amb = 0.95*amb + 0.05*v/4096
+            bv = 254*amb + 1
+            yield
+            self.set_brightness(bv)
+            yield from sleep(123)
 
     @coroutine
     def play(self, cli, cmd, rol):
@@ -236,6 +247,7 @@ class Lightshow:
     @coroutine
     def master(self):
         self.loop = yield GetRunningLoop(None)
+        yield self.manage_brightness()
         yield self.percolator.keep_leds_current(10)
         for i in range(7, 63, 7):
             self.percolator.set_color_of(i, self.percolator.stoichiometric)
