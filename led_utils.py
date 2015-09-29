@@ -159,24 +159,49 @@ class WSlice(SubscriptableForPixel):
         a = uctypes.addressof(self.buf)
         _movewords(a+12*dest, a+12*src, 3*n)
 
+"""
+class Sliced:
+    def __init__(self, salami=None, indexed_range=None):
+        self.salami = salami
+        if indexed_range is None:
+            indexed_range = range(len(salami))
+        self.indexed_range = indexed_range
+
+    def __getitem__(self, ix):
+        # FIXME: bounds checking
+        if isinstance(ix, int):
+            if x < 0:
+                ixs = self.indexed_range[ix:ix-1]
+            else:
+                ixs = self.indexed_range[ix:ix+1]
+        else:
+            ixs = self.indexed_range[ix]
+        return Sliced(self.salami, ixs)
+
+    def __len__(self):
+        return len(self.indexed_range)
+
+    def __repr__(self):
+        return "<Sliced {} with {}>".format(self.salami, self.indexed_range)
+"""
+
 
 class Lights:
     # Lights encapsulated a WS2812 or WSlice, and provides a "lattice"
     # model of the pixels and a default rendering of them to the leds
-    def __init__(self, leds, timer=None):
+    def __init__(self, leds=None, timer=None, lattice=None, indexed_range=None):
         self.leds = leds
-        self.lattice = [bytearray(3) for i in range(len(leds))]
         self.timer = timer
+        self.lattice = lattice or [bytearray(3) for i in range(len(leds))]
+        if indexed_range is None:
+            indexed_range = range(len(leds))
+        self.indexed_range = indexed_range
         self.leds_sync_last_done = 0
         self.leds_need_sync = False
         self.brightness = 1.0
 
     def __len__(self):
-        return len(self.leds)
-
-    # FIXME: who sets self.a?
-#    def clear(self):
-#        _fillwords(self.a, 0x11111111, 3*len(self.leds))
+        return len(self.indexed_range)
 
     def clear(self):
         for p in self.lattice:
@@ -198,16 +223,27 @@ class Lights:
             p[i] = color[i]
 
     def model_colors(self):
-        return self.lattice
+        for i in self.indexed_range:
+            yield self.lattice[i]
 
     def gen_RGBs(self):
-        b = round(self.brightness * 256)
+        br = round(self.brightness * 256)
+        #buf = [0, 0, 0] # 18.86ms
+        buf = bytearray(range(3)) # 16.93ms
         for p in self.model_colors():
-            yield (min(int((b*v + 128) / 256), 255) for v in p)
+            # The pythonic way (below) is too expensive:
+            #yield (min(int((br*v + 128) / 256), 255) for v in p) # 33.45ms
+            #yield list(min(int((br*v + 128) / 256), 255) for v in p) # 22.83ms
+            r, g, b = p
+            buf[0] = min(int((br*r + 128) / 256), 255)
+            buf[1] = min(int((br*g + 128) / 256), 255)
+            buf[2] = min(int((br*b + 128) / 256), 255)
+            yield buf
 
     def render(self):
         leds = self.leds
-        leds.update_buf(self.gen_RGBs())
+        for i, c in zip(self.indexed_range, self.gen_RGBs()):
+            leds[i] = c
 
     @coroutine
     def show_for(self, duration):
@@ -244,6 +280,20 @@ class Lights:
                 self.leds.sync()
                 self.leds_sync_last_done = loop.time()
                 self.leds_need_sync = False
+
+    def __getitem__(self, ix):
+        # FIXME: bounds checking
+        if isinstance(ix, int):
+            if x < 0:
+                ixs = self.indexed_range[ix:ix-1]
+            else:
+                ixs = self.indexed_range[ix:ix+1]
+        else:
+            ixs = self.indexed_range[ix]
+        return Lights(leds=self.leds, lattice=self.lattice, indexed_range=ixs)
+
+    def __repr__(self):
+        return "<Lights {} with {}>".format(self.leds, self.indexed_range)
 
 
 class Percolator(Lights):

@@ -10,7 +10,7 @@ import math
 import uctypes
 
 from ws2812 import WS2812, Pixel, PREALLOCATE, CACHE, RECREATE
-from led_utils import WSlice, _fillwords, _movewords
+from led_utils import Lights, WSlice, _fillwords, _movewords
 from led_utils import Percolator
 
 #log = logging.getLogger("test_ws2812")
@@ -23,6 +23,28 @@ def tg(led_count, start):
 
     for i in range(led_count):
         yield triple(start + 3*i)
+
+
+class SliceTestCase(unittest.TestCase):
+    def setUp(self):
+        #logging.basicConfig(level=logging.INFO)
+        gc.collect()
+
+    def tearDown(self):
+        pass
+    
+    def test_Slice(self):
+        ws = WS2812(1, 8)
+        lights = Lights(ws)
+        print(lights)
+        self.assertEqual(len(lights), 8)
+
+    def test_Slice_sliced(self):
+        ws = WS2812(1, 8)
+        lights = Lights(ws)
+        sls = lights[-2:-6:-2]
+        self.assertEqual(len(sls), 2)
+        print(sls)
 
 
 class VariousTestCase(unittest.TestCase):
@@ -369,7 +391,7 @@ class PercolatorTestCase(unittest.TestCase):
         dt = pyb.elapsed_micros(t0)
         average_ms = dt / (n * 1000)
         print("%d renders average %f ms" % (n, average_ms), end='')
-        self.assertTrue(average_ms < 20, "average render time %f ms" % (average_ms))
+        self.assertTrue(average_ms < 25, "average render time %f ms" % (average_ms))
 
     def test_render_at_index_0(self):
         # A Percolator can render itself to the backing LEDs
