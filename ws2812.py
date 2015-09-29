@@ -82,10 +82,10 @@ class SubscriptableForPixel:
     set_led_buf = bytearray(3)
     def _addressable(self, v):
         # This dance is so we create less garbage on the heap
-        if isinstance(v, bytes):
-            v = addressof(v)
-        elif isinstance(v, bytearray):
+        if isinstance(v, bytearray):
             pass
+        elif isinstance(v, bytes):
+            v = addressof(v)
         else:
             #vb = bytearray(iter(vb))
             vb = self.set_led_buf # Reuse to minimise heap impact
@@ -113,8 +113,9 @@ class SubscriptableForPixel:
         if isinstance(index, int):
             if not -length <= index < length:
                 raise IndexError("tried to set LED", index, "out of", length)
-            v = self._addressable(value)
-            _set_rgb_values(self.buf, index, v)
+            if not isinstance(value, bytearray):
+                value = self._addressable(value)
+            _set_rgb_values(self.buf, index, value)
             return
 
         #else
