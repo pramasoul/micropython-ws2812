@@ -2,7 +2,10 @@
 # Experimentation
 
 from ws2812 import WS2812
-from led_utils import WSlice, Percolator, RingRamp, Ball, Jewel7
+from lights import Lights
+from percolator import Percolator
+from ringramp import RingRamp, Ball
+from jewel7 import Jewel7
 
 import logging
 
@@ -47,11 +50,12 @@ class Lightshow:
         self.percolator.bingo = self.bingo
 
         self.ws_rings = WS2812(2, 2*7 + 45)
+        self.ring_lights = Lights(self.ws_rings)
 
-        self.feed_rollers = [Jewel7(WSlice(self.ws_rings, 0, 7)),
-                             Jewel7(WSlice(self.ws_rings, 7, 14))]
+        self.feed_rollers = [Jewel7(self.ring_lights[0:7]),
+                             Jewel7(self.ring_lights[7:14])]
 
-        self.rr = RingRamp(WSlice(self.ws_rings, start=2*7, end=2*7+45), \
+        self.rr = RingRamp(lights=self.ring_lights[14:],
                            circumference=60, \
                            bottom=7, \
                            g=-40.0,
