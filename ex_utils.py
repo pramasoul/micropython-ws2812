@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-#import random
-#import math
+import random
+import math
 from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
 from pyb import Timer, rng, micros, elapsed_micros
 import uctypes
 from ws2812 import SubscriptableForPixel
 
-"""
 def display_list_for(x, color, blur=1.0):
     # In arbitrary pixel coordinates
     rv = []
@@ -19,7 +18,6 @@ def display_list_for(x, color, blur=1.0):
         if sc:
             rv.append((i, sc))
     return rv
-"""
 
 
 def gaussian_blur_weights(x, blur=1.0):
@@ -168,8 +166,6 @@ class Lights:
     def __init__(self, leds=None, timer=None, lattice=None, indexed_range=None):
         self.leds = leds
         self.timer = timer
-        if leds is None:
-            pass                # FIXME
         self.lattice = lattice or [bytearray(3) for i in range(len(leds))]
         if indexed_range is None:
             indexed_range = range(len(leds))
@@ -281,6 +277,170 @@ class Lights:
         return "<Lights {} with {}>".format(self.leds, self.indexed_range)
 
 
+class Percolator(Lights):
+    def __init__(self, leds):
+        # Assume 8x8, and 0-based, for now
+        super().__init__(leds)
+        self.top_i = len(leds) - 1
+        self.bottom_i = 0
+        self.random = random.SystemRandom()
+        self.perk_quit = False
+        self.stoichiometric = (1,1,1)
+
+    def down_left(self, i):
+        # return the index into leds that is down-left of i
+        if i // 8:
+            return i-8
+        else:
+            return None
+
+    def down_right(self, i):
+        # return the index into leds that is down-right of i
+        if i % 8:
+            return i-1
+        else:
+            return None
+
+    def steer_down(self, i, right):
+        # Go down
+        if right:
+            rv = self.down_right(i)
+        else:
+            rv = self.down_left(i)
+        return rv
+
+    def down(self, i, right):
+        rv = self.steer_down(i, right)
+        if rv is None:
+            rv = self.steer_down(i, not right)
+        return rv
+
+    def at_mid(self, i):
+        return i//8 + i%8 == 7
+
+
+    @coroutine
+    def perk(self, delay, color, start=None):
+        #print("perk(%d, %r, %r)" % (delay, color, start))
+        stoichiometric = self.stoichiometric
+        i = None
+        while True:
+            if i is None:
+                if start is None:
+                    i = self.top_i
+                else:
+                    i = start
+            self.add_color_to(i, color)
+            yield from self.show_for(delay)
+            if self.at_mid(i):
+                new_color = yield from self.react_at(i)
+                if new_color is None:
+                    return
+                else:
+                    color = new_color
+            prev_i = i
+            i = self.down(i, rng()&1)
+            self.sub_color_from(prev_i, color)
+            self.leds_need_sync = True
+            if i is None:
+                return color
+            if self.perk_quit:
+                break
+        self.perk_quit -= 1
+
+
+    @coroutine
+    def react_at(self, i):
+        stoichiometric = self.stoichiometric
+        lattice = self.lattice
+        p = lattice[i]
+        if any(c > s for c,s in zip(p, stoichiometric)):
+            return bytes(max(c-s, 0) for c,s in zip(p, stoichiometric))
+        if all(c == s for c,s in zip(p, stoichiometric)):
+            #return stoichiometric
+            if all(all(c == s for c,s in zip(lattice[i], stoichiometric)) \
+                   for i in range(7, 63, 7)):
+                print("bingo!")
+                yield self.bingo()
+            return None
+        yield
+        return None
+
+
+    @coroutine
+    def play(self):
+        random = self.random
+        self.play_on = True
+        self.perk_quit = 0
+        while self.play_on:
+            delay = random.randrange(30,100)
+            color = random.choice(((8,0,0), (0,8,0), (0,0,8)))
+            yield self.perk(delay, color)
+            yield from sleep(random.randrange(200, 300))
+
+
+π = math.pi
+two_pi = 2*π
+
+class Ball:
+    def __init__(self, θ=0.0, ω=0.0, Fd=0.01, color=(8,0,0)):
+        self.theta = θ
+        self.ω = ω
+        self.Fd = Fd
+        self.color = color
+        self.last_shown = []
+        self.zap = False
+    
+    @property
+    def θ(self):
+        assert -π <= self.theta < π
+        return self.theta
+
+    @θ.setter
+    def θ(self, v):
+        v %= two_pi
+        if v >= π:
+            v -= two_pi
+        self.theta = v
+
+    # DEBUG: find who sets our color to zero
+    @property
+    def color(self):
+        return self._color
+
+    @color.setter
+    def color(self, v):
+        if sum(iter(v)) == 0:
+            raise ValueError("blackball")
+        self._color = v
+    # end DEBUG
+
+    def integrate(self, dt, a=0):
+        ω = self.ω
+        self.ω = ω + (a - self.Fd * ω * abs(ω)) * dt
+        self.θ = (self.θ + (ω + self.ω) * 0.5 * dt) % two_pi # Trapezoidal integration
+
+    def __repr__(self):
+        s = "<Ball θ %f, ω %f, color %r" % \
+            (self.θ, self.ω, self.color)
+        try:
+            s += ':' + repr(tuple(iter(self.color)))
+        except TypeError:
+            pass
+        return s + '>'
+
+
+"""
+def cw(lattice):
+    t = lattice[0]
+    lattice[:-1] = lattice[1:]
+    lattice[-1] = t
+
+def ccw(lattice):
+    t = lattice[-1]
+    lattice[1:] = lattice[:-1]
+    lattice[0] = t
+"""
 
 class Jewel7(Lights):
     def __init__(self, *args, **kwargs):
@@ -315,6 +475,148 @@ class Gear(Lights):
             yield leds[i]
         for c in self.indexed_range[:start]:
             yield leds[i]
+
+
+class RingRamp(Lights):
+    # A ring-shaped ramp for balls in gravity
+    # The balls ghost through each other
+    # Coordinate systems:
+    # 1) angle in radians
+    # 2) pixels clockwise from the bottom pixel
+    # 3) led index
+    #
+    # To suit the neopixel rings, we adopt θ = 0 at the bottom,
+    # and clockwise as the direction of increasing θ
+
+    def __init__(self, leds,
+                 circumference=None,
+                 bottom=0,
+                 g=-1.0,
+                 blur=None,
+                 ball_check_fun=lambda b, θ, ω :[b]):
+        super().__init__(leds)
+        self.g = g
+        self.bottom = bottom
+        if circumference is not None:
+            self.circumference = circumference
+        else:
+            self.circumference = len(leds)
+        self.pix_per_radian = self.circumference / two_pi
+        self.r = self.circumference / two_pi
+        self.blur = blur
+        self.balls = []
+        self.ball_check_fun = ball_check_fun
+
+    def integrate(self, dt):
+        next_balls = []
+        for ball in self.balls:
+            θ = ball.θ
+            ω = ball.ω
+            ball.integrate(dt, a = self.g * math.sin(ball.θ) / self.r)
+            t = self.ball_check_fun(ball, θ, ω )
+            if t:
+                try:
+                    next_balls.extend(t)
+                except MemoryError:
+                    print('len(balls) =', len(self.balls), 'len(next_balls) =', len(next_balls))
+                    raise
+        self.balls = next_balls
+
+    def add_color_to(self, i, color):
+        p = self.lattice[i]
+        for i in range(3):
+            p[i] += color[i]
+
+    def gen_RGBs(self):
+        c = self.circumference
+        bottom = self.bottom
+        lattice_len = len(self.lattice)
+        for p in self.lattice:
+            p[0] = p[1] = p[2] = 0
+
+        for ball in self.balls:
+            # DEBUG:
+            if sum(ball.color) == 0:
+                print("dark ball", ball)
+
+            for i, color in self.display_list_for_angle(ball.θ, ball.color, self.blur):
+                # Input positions in pixel circle space
+                # Rotates to LED space and clips to available arc
+                k = (i + bottom) % c
+                if k < lattice_len:
+                    self.add_color_to(k, color)
+
+        b = round(self.brightness * 256)
+        for p in self.lattice:
+            yield (min((b*v + 128) >> 8, 255) for v in p)
+
+    def show_balls(self):
+        self.render()
+        self.leds.sync()
+
+    def was_show_balls(self):
+        c = self.circumference
+        survivors = []
+        for ball in self.balls:
+            self.change_leds(subtract=ball.last_shown)
+            #print(ball, end='') # DEBUG
+            #print("%2.2d" % i, ball, end='\r')      # DEBUG
+            if not ball.zap:
+                try:
+                    survivors.append(ball)
+                except MemoryError as e:
+                    print("len(survivors) =", len(survivors))
+                    for ball in survivors:
+                        print(ball)
+                    raise e
+                # DEBUG:
+                if sum(ball.color) == 0:
+                    print("dark ball", ball)
+                try:
+                    ball.last_shown = \
+                        self.display_list_for_angle(ball.θ, ball.color, self.blur)
+                except Exception as e:
+                    print(e)
+                    print(ball)
+                    raise
+                self.change_leds(add=ball.last_shown)
+        self.balls = survivors
+        self.leds.sync()
+
+    def change_leds(self, subtract=[], add=[]):
+        # Input positions in pixel circle space
+        # Rotates to LED space and clips to available arc
+        c = self.circumference
+        bottom = self.bottom
+        led_len = len(self.leds)
+        for i, color in subtract:
+            k = (i + bottom) % c
+            if k < led_len:
+                self.sub_color_from(k, color)
+        for i, color in add:
+            k = (i + bottom) % c
+            if k < led_len:
+                self.add_color_to(k, color)
+
+    def display_list_for_angle(self, θ, color, blur=1.0):
+        return display_list_for(θ * self.pix_per_radian, color, blur)
+
+    @coroutine
+    def integrate_continuously(self, nap=10):
+        #print("integrating continuously, napping %d" % nap)
+        tscale = 1 / 1000000
+        then = micros()
+        #should_be_less_than = (nap + 30) * 1000
+        while True:
+            dt = elapsed_micros(then)
+            #if dt >= should_be_less_than:
+            #    print("integration dt was", dt)
+            then = micros()
+            self.integrate(dt * tscale)
+            self.show_balls()
+            yield from sleep(nap)
+
+
 
 @micropython.asm_thumb
 def _fillwords(r0, r1, r2):

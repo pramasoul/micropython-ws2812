@@ -10,12 +10,11 @@ import gc
 import uctypes
 
 from ws2812 import WS2812, Pixel, PREALLOCATE, CACHE, RECREATE
-from led_utils import WSlice, _fillwords, _movewords
-from led_utils import Lights, Gear
+from led_utils import Lights, WSlice, _fillwords, _movewords
+from led_utils import Percolator
 
 #log = logging.getLogger("test_ws2812")
 
-# A helper
 def tg(led_count, start):
 
     def triple(n):
@@ -26,7 +25,7 @@ def tg(led_count, start):
         yield triple(start + 3*i)
 
 
-class LightSliceTestCase(unittest.TestCase):
+class SliceTestCase(unittest.TestCase):
     def setUp(self):
         #logging.basicConfig(level=logging.INFO)
         gc.collect()
@@ -35,14 +34,13 @@ class LightSliceTestCase(unittest.TestCase):
         pass
     
 
-    def test_slice(self):
+    def test_Slice(self):
         ws = WS2812(1, 8)
         lights = Lights(ws)
         self.assertEqual(len(lights), 8)
 
 
-    def test_slice_sliced_rval(self):
-        # Lights sliced as an rval
+    def test_Slice_sliced_rval(self):
         ws = WS2812(1, 8)
         lights = Lights(ws)
 
@@ -69,8 +67,7 @@ class LightSliceTestCase(unittest.TestCase):
         self.assertEqual(len(sls), 2)
         self.assertEqual(list(sls), [bytearray(v) for v in [(18,19,20), (12,13,14)]])
 
-    def test_slice_sliced_lval(self):
-        # Lights sliced as an lval
+    def test_Slice_sliced_lval(self):
         ws = WS2812(1, 8)
         lights = Lights(ws)
 
@@ -96,69 +93,12 @@ class LightSliceTestCase(unittest.TestCase):
 
         # Other places don't get written
         self.assertEqual(list((i, lights[i]) for i in range(len(lights)) if i not in (6,4)),
-            list((i, bytearray(t)) for i, t in enumerate(tg(len(lights), 0)) if i not in (6,4)))
+                         list((i, t) for i, t in enumerate(tg(len(lights), 0)) if i not in (6,4)))
         
+
                          
 
-class GearTestCase(unittest.TestCase):
-    def setUp(self):
-        #logging.basicConfig(level=logging.INFO)
-        gc.collect()
-
-    def tearDown(self):
-        pass
-    
-
-    def test_Gear(self):
-        ws = WS2812(1, 8)
-        lights = Lights(ws)
-
-        # Fill the lattice with a recognizable pattern
-        for i, p in enumerate(tg(len(lights), 0)):
-            lat = lights.lattice[i]
-            for j, c in enumerate(p):
-                lat[j] = c
-
-        # The leds are all clear
-        self.assertEqual(sum(sum(c) for c in ws), 0)
-
-        # A gear can be created
-        gear = Gear(leds=lights.leds,
-                    lattice=lights.lattice,
-                    indexed_range=lights.indexed_range)
-
-        # It has the correct length
-        self.assertEqual(len(gear), 8)
-
-        # A gear can be sliced
-        g3 = gear[3:6]
-        self.assertEqual(len(g3), 3)
-
-        # A sliced gear gives the correct lattice points
-        for a, b in zip(g3, lights.lattice[3:6]):
-            self.assertIs(a, b)
-        
-        # A gear can be colored
-        coloring = [(110, 120, 130), (140, 150, 160), (170, 180, 190)]
-        for i in range(len(g3)):
-            g3[i] = coloring[i]
-        for i in range(len(g3)):
-            self.assertEqual(tuple(g3[i]), coloring[i])
-
-        # It renders correctly for brightness=1.0
-        g3.render()
-        for i in range(len(g3)):
-            self.assertEqual(tuple(ws[i+3]), coloring[i])
-
-        # It renders correctly for brightness=0.1
-        g3.brightness = 0.1
-        g3.render()
-        for i in range(len(g3)):
-            self.assertEqual(tuple(ws[i+3]), tuple(v/10 for v in coloring[i]))
-
-
-
-class AsmTestCase(unittest.TestCase):
+class VariousTestCase(unittest.TestCase):
     def setUp(self):
         #logging.basicConfig(level=logging.INFO)
         gc.collect()
@@ -473,6 +413,72 @@ class WSliceTestCase(unittest.TestCase):
                 gc.collect()
                 #self.assertEqual(list(list(pix) for pix in leds), rpixlist)
                 leds.rotate_places(-j)
+
+
+class PercolatorTestCase(unittest.TestCase):
+    def setUp(self):
+        #logging.basicConfig(level=logging.INFO)
+        #random.seed("WSlice")
+        self.ws = ws = WS2812(1,64)
+        for i in range(len(ws)):
+            ws[i] = (i, 2*i, 3*i)
+        self.p = Percolator(ws)
+
+    def tearDown(self):
+        self.ws = self.p = None
+        gc.collect()
+    
+    def test_render_init(self):
+        # A Percolator is initially in a state that renders all off
+        self.p.render()
+        self.assertTrue(all(sum(v)==0 for v in self.ws))
+
+    def test_render_time(self):
+        # Rendering takes the expected amount of time
+        n = 10
+        t0 = pyb.micros()
+        for i in range(n):
+            self.p.render()
+        dt = pyb.elapsed_micros(t0)
+        average_ms = dt / (n * 1000)
+        print("%d renders average %f ms" % (n, average_ms), end='')
+        self.assertTrue(average_ms < 15, "average render time %f ms" % (average_ms))
+
+    def test_render_at_index_0(self):
+        # A Percolator can render itself to the backing LEDs
+        lattice = self.p.lattice
+        ref = (12, 34, 56)
+        for i, v in enumerate(ref):
+            lattice[0][i] = v
+        self.p.render()
+        self.assertEqual(tuple(self.ws[0]), ref)
+        self.assertTrue(all(sum(v)==0 for v in self.ws[1:]))
+
+    def test_render_at_index_0_various_brightness(self):
+        # A Percolator can render itself to the backing LEDs with controlled brightness
+        lattice = self.p.lattice
+        color = (12, 34, 56)
+        ref = [0] * 3
+        for brightness in (1.0, 0.5, 0.1, 0.01, 3/17, 1/254, 1/255, 1/256, 0.0):
+            print(' %r' % brightness, end='')
+            self.p.brightness = brightness
+            for i, v in enumerate(color):
+                lattice[0][i] = v
+                ref[i] = round(brightness * v)
+            self.p.render()
+            self.assertEqual(tuple(self.ws[0]), tuple(ref))
+            self.assertTrue(all(sum(v)==0 for v in self.ws[1:]))
+
+    def test_render_at_several_positions(self):
+        # A Percolator can render itself to the backing LEDs
+        lattice = self.p.lattice
+        for k, g in enumerate(tg(64, 0)):
+            for i, v in enumerate(g):
+                lattice[k][i] = v
+        self.p.render()
+        for led, g in zip(self.ws, tg(64,0)):
+            self.assertEqual(tuple(led), tuple(g))
+
 
 def main():
     unittest.main()
