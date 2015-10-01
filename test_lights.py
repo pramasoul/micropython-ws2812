@@ -95,6 +95,11 @@ class LightSliceTestCase(unittest.TestCase):
         self.assertEqual(list((i, lights[i]) for i in range(len(lights)) if i not in (6,4)),
             list((i, bytearray(t)) for i, t in enumerate(tg(len(lights), 0)) if i not in (6,4)))
         
+        # Can accept generator rval
+        sls[:] = tg(1000, 50)   # which can be willing to run over
+        self.assertEqual([p for p in sls],
+                         [bytearray(c) for c in tg(len(sls), 50)])
+
                          
 def main():
     unittest.main()

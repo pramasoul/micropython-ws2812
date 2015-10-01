@@ -2,7 +2,10 @@ from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
 
 class Lights:
     # Lights encapsulated a WS2812, and provides a "lattice" model of
-    # the pixels and a default rendering of them to the leds
+    # the pixels and a default rendering of them to the leds.  This
+    # lattice model has a default treatment in the rendering, which
+    # subclasses are free to override. They can then use their lattice
+    # points in their own models however they please.
     def __init__(self, leds=None, lights=None, timer=None, lattice=None, indexed_range=None,
                  *args, **kwargs):
         if isinstance(lights, Lights):
@@ -44,8 +47,12 @@ class Lights:
         else:
             for i, v in zip(self.indexed_range[ix], val):
                 p = self.lattice[i]
-                for i in range(3):
-                    p[i] = v[i]
+                try:
+                    for i in range(3):
+                        p[i] = v[i]
+                except TypeError:
+                    for i, vi in enumerate(iter(v)):
+                        p[i] = vi
 
     def clear(self):
         for p in self.lattice:

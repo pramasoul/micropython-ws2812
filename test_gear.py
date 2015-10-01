@@ -30,9 +30,7 @@ class GearTestCase(unittest.TestCase):
         # The leds are all clear
         self.assertEqual(sum(sum(c) for c in ws), 0)
 
-        self.gear = Gear(leds=lights.leds,
-                    lattice=lights.lattice,
-                    indexed_range=lights.indexed_range)
+        self.gear = Gear(lights=lights)
 
 
     def tearDown(self):
@@ -44,8 +42,8 @@ class GearTestCase(unittest.TestCase):
         # It has the correct length
         self.assertEqual(len(self.gear), 8)
 
-    def test_Gear_slice(self):
-        # A gear can be sliced
+    def test_Gear_slice_rval(self):
+        # A sliced gear can be an rval
         g3 = self.gear[3:6]
         self.assertTrue(isinstance(g3, Gear), type(g3))
         self.assertEqual(len(g3), 3)
@@ -54,6 +52,26 @@ class GearTestCase(unittest.TestCase):
         for a, b in zip(g3, self.lights.lattice[3:6]):
             self.assertIs(a, b)
         
+    def test_Gear_slice_lval(self):
+        # An indexed gear can be an lval
+        g3 = self.gear[3:6]
+        g3[0] = (7, 11, 13)
+        self.assertEqual(g3[0], bytearray([7, 11, 13]))
+
+        # With a slice index as well
+#        g3[1:2] = [(17, 19, 23), (29, 31, 37), (41, 43, 47)]
+        g3[1:3] = [(17, 19, 23), (29, 31, 37)]
+
+        # And read back
+        self.assertEqual([tuple(v) for v in g3],
+                         [(7, 11, 13), (17, 19, 23), (29, 31, 37)])
+
+        # With a generator
+        g3[:] = tg(10, 50)      # which can be willing to run over
+        self.assertEqual([p for p in g3],
+                         [bytearray(c) for c in tg(3, 50)])
+
+
     def test_Gear_coloring(self):
         # A gear can be colored
         g3 = self.gear[3:6]
