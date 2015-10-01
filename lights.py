@@ -35,24 +35,21 @@ class Lights:
             return self.lattice[self.indexed_range[ix]]
         else:
             ixs = self.indexed_range[ix]
-        #return Lights(leds=self.leds, lattice=self.lattice, indexed_range=ixs)
-        #return self.__class__(leds=self.leds, lattice=self.lattice, indexed_range=ixs)
         return self.__class__(lights=self, indexed_range=ixs)
 
     def __setitem__(self, ix, val):
         if isinstance(ix, int):
-            p = self.lattice[self.indexed_range[ix]]
-            for i,v in enumerate(val):
-                p[i] = v
+            i_val = [(self.indexed_range[ix], val)]
         else:
-            for i, v in zip(self.indexed_range[ix], val):
-                p = self.lattice[i]
-                try:
-                    for i in range(3):
-                        p[i] = v[i]
-                except TypeError:
-                    for i, vi in enumerate(iter(v)):
-                        p[i] = vi
+            i_val = zip(self.indexed_range[ix], val)
+
+        for i, val in i_val:
+            p = self.lattice[i]
+            try: # to reuse storage
+                for k,v in enumerate(val):
+                    p[k] = v
+            except (TypeError, IndexError):
+                self.lattice[i] = val
 
     def clear(self):
         for p in self.lattice:
