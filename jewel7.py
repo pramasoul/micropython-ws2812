@@ -12,3 +12,6 @@ class Jewel7(Lights):
         yield self.center
         yield from self.gear.model_colors()
 
+    def __repr__(self):
+        return "<Jewel7 {} with {}, center {} and {}" \
+            .format(self.leds, self.indexed_range, self.center, self.gear)
