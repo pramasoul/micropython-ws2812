@@ -4,12 +4,11 @@ from gear import Gear
 class Jewel7(Lights):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.indexed_range = self.indexed_range[:7]
         self.center = self.lattice[self.indexed_range[0]]
-        self.gear = Gear(leds=self.leds, timer=self.timer,
-                         lattice=self.lattice,
-                         indexed_range=self.indexed_range[1:])
+        self.gear = Gear(lights=self, indexed_range=self.indexed_range[1:7])
         
     def model_colors(self):
-        yield self.lattice[0]
+        yield self.center
         yield from self.gear.model_colors()
 
