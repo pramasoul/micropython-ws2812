@@ -52,8 +52,8 @@ class Lightshow:
         self.ws_rings = WS2812(2, 2*7 + 45)
         self.ring_lights = Lights(self.ws_rings)
 
-        self.feed_rollers = [Jewel7(self.ring_lights[0:7]),
-                             Jewel7(self.ring_lights[7:14])]
+        self.feed_rollers = [Jewel7(lights=self.ring_lights[0:7]),
+                             Jewel7(lights=self.ring_lights[7:14])]
 
         self.rr = RingRamp(lights=self.ring_lights[14:],
                            circumference=60, \
@@ -66,7 +66,7 @@ class Lightshow:
         
     def set_brightness(self, v):
         self.brightness = self.rr.brightness = self.percolator.brightness = v
-        #self.percolator.leds_need_sync = True
+        self.feed_rollers[0].brightness = self.feed_rollers[1].brightness = v
         
     @coroutine
     def flash_LED(self, led, dur=1):
@@ -212,14 +212,16 @@ class Lightshow:
         lower.center[2] = upper.center[2] = 1
         v = 1.0
         for i in range(len(lower.gear)):
-            lower.gear.lattice[i] = (v, 0, 0)
-            upper.gear.lattice[i] = (0, v, 0)
+            lower.gear[i] = [v, 0, 0]
+            upper.gear[(3-i)%len(lower.gear)] = [0, v, 0]
             v *= 0.3
         while True:
             #time = self.loop.time
             #then = time()
             lower.gear.cw()
             upper.gear.ccw()
+            lower.render()
+            upper.render()
             #now = time()
             #t = 20 - (now - then)
             #then = now
