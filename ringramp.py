@@ -104,9 +104,9 @@ class RingRamp(Lights):
     def gen_RGBs(self):
         c = self.circumference
         bottom = self.bottom
-        lattice_len = len(self.lattice)
-        for p in self.lattice:
-            p[0] = p[1] = p[2] = 0
+        length = len(self)
+
+        self.clear()
 
         for ball in self.balls:
             # DEBUG:
@@ -117,11 +117,11 @@ class RingRamp(Lights):
                 # Input positions in pixel circle space
                 # Rotates to LED space and clips to available arc
                 k = (i + bottom) % c
-                if k < lattice_len:
+                if k < length:
                     self.add_color_to(k, color)
 
         b = round(self.brightness * 256)
-        for p in self.lattice:
+        for p in self:
             yield (min((b*v + 128) >> 8, 255) for v in p)
 
     def show_balls(self):
