@@ -53,21 +53,21 @@ class Lights:
                 self.lattice[i] = val
 
     def clear(self):
-        for p in self.lattice:
+        for p in self:
             p[0] = p[1] = p[2] = 0
 
     def add_color_to(self, i, color):
-        p = self.lattice[i]
+        p = self[i]
         for i in range(3):
             p[i] += color[i]
 
     def sub_color_from(self, i, color):
-        p = self.lattice[i]
+        p = self[i]
         for i in range(3):
             p[i] -= color[i]
 
     def set_color_of(self, i, color):
-        p = self.lattice[i]
+        p = self[i]
         for i in range(3):
             p[i] = color[i]
 
@@ -144,5 +144,6 @@ class Lights:
                 self.leds_need_sync = False
 
     def __repr__(self):
-        return "<Lights {} with {}>".format(self.leds, self.indexed_range)
+        return "<{} {} with {}>"\
+            .format(self.__class__.__name__, self.leds, self.indexed_range)
 

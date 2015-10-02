@@ -26,31 +26,47 @@ def tg(led_count, start):
 class LightSliceTestCase(unittest.TestCase):
     def setUp(self):
         #logging.basicConfig(level=logging.INFO)
-        self.ws = self.lights = None
-        gc.collect()
         self.ws = WS2812(1, 8)
-        self.lights = Lights(self.ws)
+        self.lights = lights = Lights(self.ws)
+
+        # Fill the lattice with a recognizable pattern
+        for i, c in enumerate(tg(len(lights), 0)):
+            p = lights.lattice[i]
+            for j, v in enumerate(c):
+                p[j] = v
 
     def tearDown(self):
-        pass
-    
+        self.ws = self.lights = None
+        gc.collect()
 
     def test_slice(self):
         ws = self.ws
         lights = self.lights
         self.assertEqual(len(lights), 8)
 
+    def test_clear(self):
+        ws = self.ws
+        lights = self.lights
+        lights.clear()
+        self.assertEqual(sum(sum(c) for c in lights), 0)
+
+    def test_clear_sliced(self):
+        ws = self.ws
+        lights = self.lights
+        sls = lights[-2:-6:-2]
+        expect = [tuple(c) for c in tg(len(lights), 0)]
+        self.assertEqual(len(sls), 2)
+        self.assertEqual(list(sls), [bytearray(v) for v in [(18,19,20), (12,13,14)]])
+        self.assertEqual([tuple(v) for v in lights], expect)
+        sls.clear()
+        expect[6] = expect[4] = (0,0,0)
+        self.assertEqual([tuple(v) for v in lights], expect)
+
 
     def test_slice_sliced_rval(self):
         # Lights sliced as an rval
         ws = self.ws
         lights = self.lights
-
-        # Fill the lattice with a recognizable pattern
-        for i, p in enumerate(tg(len(lights), 0)):
-            lat = lights.lattice[i]
-            for j, c in enumerate(p):
-                lat[j] = c
 
         sls = lights[:2]
 
@@ -73,14 +89,7 @@ class LightSliceTestCase(unittest.TestCase):
         # Lights sliced as an lval
         ws = self.ws
         lights = self.lights
-
-        # Fill the lattice with a recognizable pattern
-        for i, p in enumerate(tg(len(lights), 0)):
-            lat = lights.lattice[i]
-            for j, c in enumerate(p):
-                lat[j] = c
         ref = lights.lattice[:]
-
         sls = lights[-2:-6:-2]
 
         # A Lights is indexable by an int for writing
