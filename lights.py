@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from async_pyb import coroutine, sleep, GetRunningLoop, Sleep
 
 class Lights:
@@ -80,13 +81,25 @@ class Lights:
         #buf = [0, 0, 0] # 18.86ms
         buf = bytearray(range(3)) # 16.93ms
         for p in self.model_colors():
-            # The pythonic way (below) is too expensive:
+            # The pythonic way is too expensive:
             #yield (min(int((br*v + 128) / 256), 255) for v in p) # 33.45ms
             #yield list(min(int((br*v + 128) / 256), 255) for v in p) # 22.83ms
             r, g, b = p
-            buf[0] = min(int((br*r + 128) / 256), 255)
-            buf[1] = min(int((br*g + 128) / 256), 255)
-            buf[2] = min(int((br*b + 128) / 256), 255)
+
+            # 13.4546ms
+            #buf[0] = min(int((br*r + 128) / 256), 255)
+            #buf[1] = min(int((br*g + 128) / 256), 255)
+            #buf[2] = min(int((br*b + 128) / 256), 255)
+
+            # 12.3317ms
+            #buf[0] = min((int(br*r) + 128) // 256, 255)
+            #buf[1] = min((int(br*g) + 128) // 256, 255)
+            #buf[2] = min((int(br*b) + 128) // 256, 255)
+
+            # 12.2485ms
+            buf[0] = min((int(br*r) + 128) >> 8, 255)
+            buf[1] = min((int(br*g) + 128) >> 8, 255)
+            buf[2] = min((int(br*b) + 128) >> 8, 255)
             yield buf
 
     def render(self):
