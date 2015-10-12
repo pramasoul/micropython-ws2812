@@ -8,6 +8,7 @@ import gc
 import math
 
 import random
+from sys import platform
 
 from ws2812 import WS2812, Pixel, PREALLOCATE, CACHE, RECREATE
 
@@ -44,7 +45,7 @@ def vg():
 
 
 class WS2812TestCase(unittest.TestCase):
-    names = """SinglePixel GrindSinglePixel PixelAssignPixel
+    names = """SinglePixel PixelBufferBits GrindSinglePixel PixelAssignPixel
 MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
     #names = ['SlicedRval']  # DEBUG
 
@@ -72,15 +73,13 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
                 else:
                     print("ok")
 
+
     def doTestSinglePixel(self, mem):
         # buf is the correct length
         leds = WS2812(spi_bus=1, led_count=1, mem=mem)
         self.assertEqual(len(leds.buf), 13)
 
         # As-created the pixels are all off
-        # Off is represented correctly in the buffer
-        self.assertEqual('|'.join('%x' % v for v in leds.buf),
-                         '11|11|11|11|11|11|11|11|11|11|11|11|0')
 
         # leds can be accessed via iterator
         self.assertEqual(list(list(v) for v in leds), [[0]*3])
@@ -127,32 +126,53 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         leds[0].off()
         self.assertEqual(list(leds[0]), [0]*3)
 
+
+    def doTestPixelBufferBits(self, mem):
+        leds = WS2812(spi_bus=1, led_count=1, mem=mem)
+
+        if platform == 'pyboard':
+            plati = 0
+        else:
+            plati = 1
+
+        # As-created the pixels are all off
+        # Off is represented correctly in the buffer
+        self.assertEqual('|'.join('%x' % v for v in leds.buf),
+                         ('11|11|11|11|11|11|11|11|11|11|11|11|0',
+                          '0|0|0|0|0|0|0|0|0|0|0|0|0')[plati])
+
         # All-ones is represented correctly in the buffer
         leds[0] = b'\xff\xff\xff'
         self.assertEqual(list(leds[0]), [255, 255, 255])
         self.assertEqual('|'.join('%x' % v for v in leds.buf),
-                         '33|33|33|33|33|33|33|33|33|33|33|33|0')
+                         ('33|33|33|33|33|33|33|33|33|33|33|33|0',
+                          'ff|ff|ff|0|0|0|0|0|0|0|0|0|0')[plati])
 
+        pix = leds[0]
         # The colors are in the right place, affecting the correct bits in the buffer
         pix[0] = 2
         pix[1] = 1
         pix[2] = 4
         self.assertEqual('|'.join('%x' % v for v in leds.buf),
-                         '11|11|11|13|11|11|11|31|11|11|13|11|0')
+                         ('11|11|11|13|11|11|11|31|11|11|13|11|0',
+                          '1|2|4|0|0|0|0|0|0|0|0|0|0')[plati])
         # variation
         pix[0] = 12
         pix[1] = 34
         pix[2] = 56
         self.assertEqual(list(leds[0]), [12, 34, 56])
         self.assertEqual('|'.join('%x' % v for v in leds.buf),
-                         '11|31|11|31|11|11|33|11|11|33|31|11|0')
+                         ('11|31|11|31|11|11|33|11|11|33|31|11|0',
+                          '22|c|38|0|0|0|0|0|0|0|0|0|0')[plati])
         # variation
         pix[0] = -1
         pix[1] = 345
         pix[2] = 777777777
         self.assertEqual(list(leds[0]), [255, 89, 113])
         self.assertEqual('|'.join('%x' % v for v in leds.buf),
-                         '13|13|31|13|33|33|33|33|13|33|11|13|0')
+                         ('13|13|31|13|33|33|33|33|13|33|11|13|0',
+                          '59|ff|71|0|0|0|0|0|0|0|0|0|0')[plati])
+
 
     def testMemoryUsed0(self):
         leds = WS2812(spi_bus=1, led_count=64, mem=PREALLOCATE)
@@ -160,7 +180,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             pass
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed1(self):
@@ -169,7 +190,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             leds[0].g = i          # no leak
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed2(self):
@@ -178,7 +200,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             leds[0] = b'\x08\x00\x00' # no leak
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed3(self):
@@ -188,7 +211,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             leds[0] = foo           # no leak
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed4(self):
@@ -198,7 +222,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             leds[0] = bar           # no leak
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed5(self):
@@ -207,7 +232,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             p = leds[i]
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed6(self):
@@ -216,7 +242,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             r = leds[i].r           # no leak
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     @unittest.skip("Fails")
     def testMemoryUsed7(self):
@@ -225,7 +252,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             r,g,b = leds[i]                         # -64 each
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed8(self):
@@ -234,7 +262,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             r,g,b = leds[i].r, leds[i].g, leds[i].b # no leak
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed9(self):
@@ -246,7 +275,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             t = leds[i][0]          # no leak
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed10(self):
@@ -256,7 +286,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
             for k in range(len(leds[i])): # no leak
                 leds[i][k] = leds[i-1][k]
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     #@unittest.skip("FIXME")
     def testMemoryUsed11(self):
@@ -266,7 +297,8 @@ MultiPixel MultiPixelFedIterator SlicedRval SlicedLval""".split()
         for i in range(8):
             leds[i] = foolist       # no leak
         delta_mem = gc.mem_free() - prev_mem_free
-        self.assertEqual(delta_mem, 0)
+        if platform == 'pyboard':
+            self.assertEqual(delta_mem, 0)
 
     def testSizes(self):
         gc.collect()
