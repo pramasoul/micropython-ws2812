@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Experimentation
 
-from ws2812 import WS2812
+#from ws2812 import WS2812
 from lights import Lights
 from percolator import Percolator
 from ringramp import RingRamp, Ball
@@ -234,10 +234,8 @@ class Lightshow:
         amb = a.read()/4096
         while True:
             v = a.read()
-            yield
             amb = 0.95*amb + 0.05*v/4096
             bv = 254*amb + 1
-            yield
             self.set_brightness(bv)
             yield from sleep(123)
 
@@ -284,6 +282,11 @@ def main():
         yield from cli.writeln(repr(config))
 
     config = eval(open('lightshow.cfg').read())
+    if config.get('record'):
+        exec('from wsrec import WS2812')
+        print('recording')
+    else:
+        exec('from ws2812 import WS2812')
 
 
     @coroutine
